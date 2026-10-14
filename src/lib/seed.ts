@@ -20,6 +20,19 @@ const pick = <T,>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)]
 const int = (a: number, b: number) => a + Math.floor(rnd() * (b - a + 1))
 const chance = (p: number) => rnd() < p
 
+/**
+ * Отсъствията в едно училище не са равномерно разпределени: повечето ученици
+ * имат малко, а малка група натрупва много. Равномерното 0–14 правеше
+ * класациите безсмислени (десетки ученици с еднакъв максимум).
+ */
+function skewedAbsences(): number {
+  const r = rnd()
+  if (r < 0.55) return int(0, 5)
+  if (r < 0.85) return int(6, 12)
+  if (r < 0.96) return int(13, 22)
+  return int(23, 45)
+}
+
 const MALE = ['Иван', 'Георги', 'Димитър', 'Петър', 'Николай', 'Стоян', 'Красимир', 'Тодор', 'Христо', 'Васил', 'Атанас', 'Борис', 'Владимир', 'Емил', 'Живко', 'Кирил', 'Любомир', 'Мартин', 'Недялко', 'Огнян', 'Павел', 'Радослав', 'Симеон', 'Теодор', 'Филип', 'Цветан', 'Чавдар', 'Юлиан', 'Явор', 'Александър', 'Божидар', 'Виктор', 'Габриел', 'Даниел', 'Здравко', 'Илия', 'Йордан', 'Константин', 'Лъчезар', 'Мирослав', 'Орлин', 'Пламен', 'Росен', 'Светослав', 'Траян', 'Християн']
 const FEMALE = ['Мария', 'Иванка', 'Елена', 'Петя', 'Анна', 'Виктория', 'Габриела', 'Даниела', 'Ева', 'Жанета', 'Зорница', 'Илияна', 'Йоана', 'Калина', 'Лилия', 'Милена', 'Надежда', 'Олга', 'Павлина', 'Радост', 'Симона', 'Теодора', 'Уляна', 'Фани', 'Христина', 'Цветелина', 'Юлия', 'Яна', 'Александра', 'Боряна', 'Валентина', 'Гергана', 'Десислава', 'Емилия', 'Златина', 'Ивелина', 'Красимира', 'Лора', 'Магдалена', 'Невена', 'Полина', 'Ралица', 'Светла', 'Таня', 'Цветана']
 const LAST = ['Иванов', 'Георгиев', 'Димитров', 'Петров', 'Николов', 'Стоянов', 'Кръстев', 'Тодоров', 'Христов', 'Василев', 'Атанасов', 'Борисов', 'Владимиров', 'Емилов', 'Желев', 'Кирилов', 'Мартинов', 'Недялков', 'Огнянов', 'Павлов', 'Радославов', 'Симеонов', 'Теодоров', 'Филипов', 'Цветанов', 'Чавдаров', 'Юлианов', 'Яворов', 'Александров', 'Божидаров', 'Викторов', 'Даниелов', 'Здравков', 'Илиев', 'Йорданов', 'Константинов', 'Мирославов', 'Орлинов', 'Пламенов', 'Росенов', 'Светославов', 'Траянов']
@@ -281,16 +294,18 @@ export function buildDB(): DB {
 
   // демо акаунти за всяка роля
   const demoStudent = students.find((s) => classes.find((c) => c.id === s.classId)!.grade === 9)!
-  const demoStudentUser = users.find((u) => u.studentId === demoStudent.id)!
+  // внимателно: родителите също носят `studentId`, затова се търси по роля
+  const demoStudentUser = users.find((u) => u.roles.includes('student') && u.studentId === demoStudent.id)!
   demoStudentUser.username = 'ucenik'
   demoStudentUser.password = 'demo123'
-  const demoParent = users.find((u) => u.childrenIds?.includes(demoStudent.id))!
+  const demoParent = users.find((u) => u.roles.includes('parent') && u.childrenIds?.includes(demoStudent.id))!
   demoParent.username = 'roditel'
   demoParent.password = 'demo123'
   const demoTeacher = teachers[0]
   demoTeacher.username = 'ucitel'
   demoTeacher.password = 'demo123'
-  const demoClass = teachers.find((t) => t.roles.includes('class_teacher'))!
+  // първият учител вече е зает от `ucitel`, иначе двете имена се застъпват
+  const demoClass = teachers.find((t) => t.roles.includes('class_teacher') && t.id !== demoTeacher.id)!
   demoClass.username = 'klasen'
   demoClass.password = 'demo123'
 
@@ -351,7 +366,7 @@ export function buildDB(): DB {
   let ai = 0
   activeStudents.forEach((st) => {
     const k = classes.find((c) => c.id === st.classId)!
-    const n = int(0, 14)
+    const n = skewedAbsences()
     for (let i = 0; i < n; i++) {
       ai++
       const excused = chance(0.42)

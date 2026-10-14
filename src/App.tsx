@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { useApp } from './store/AppContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
+import Nachalo from './pages/Nachalo'
 import Dnevnik from './pages/Dnevnik'
 import MoyatChas from './pages/MoyatChas'
 import Statistiki from './pages/Statistiki'
@@ -41,7 +41,7 @@ function Forbidden() {
       <p className="mt-1 max-w-sm text-sm text-ink-500">
         Ролята ви не включва права за този раздел. Ако смятате, че е грешка, обърнете се към системния администратор.
       </p>
-      <Link to="/" className="btn-primary mt-5">Към началото</Link>
+      <Link to="/nachalo" className="btn-primary mt-5">Към началото</Link>
     </div>
   )
 }
@@ -58,7 +58,8 @@ export default function App() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<Navigate to="/nachalo" replace />} />
+        <Route path="/nachalo" element={<Guard id="nachalo"><Nachalo /></Guard>} />
 
         <Route path="/dnevnik" element={<Guard id="dnevnik"><Dnevnik /></Guard>} />
         <Route path="/moyat-chas" element={<Guard id="moyat-chas"><MoyatChas /></Guard>} />

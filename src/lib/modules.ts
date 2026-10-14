@@ -50,8 +50,18 @@ const ADMIN: RoleId[] = ['sysadmin', 'director', 'deputy']
 const TEACH: RoleId[] = ['sysadmin', 'director', 'deputy', 'teacher', 'class_teacher', 'educator', 'resource_teacher']
 const FAMILY: RoleId[] = ['parent', 'student']
 
-/** Всичките 28 модула на електронния дневник. */
+/** Всичките 29 модула на електронния дневник. */
 export const MODULES: ModuleDef[] = [
+  {
+    id: 'nachalo',
+    name: 'Начало',
+    path: '/nachalo',
+    icon: 'home',
+    group: 'Основни',
+    roles: ALL,
+    desc: 'Обобщено табло — успех, оценки, отсъствия, отзиви, класации и активност.',
+    features: 6,
+  },
   {
     id: 'dnevnik',
     name: 'Дневник',

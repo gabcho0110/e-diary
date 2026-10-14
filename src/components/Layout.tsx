@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
-import { GROUPS, type ModuleDef } from '../lib/modules'
+import { GROUPS, MODULES, type ModuleDef } from '../lib/modules'
 import { ROLE_MAP, roleNames } from '../lib/roles'
 import { Avatar, Badge, Icon } from './ui'
 
@@ -210,6 +210,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     : 0
 
   const crumbs = loc.pathname.split('/').filter(Boolean)
+  const current = MODULES.find((m) => m.path === loc.pathname)
 
   return (
     <div className="flex h-screen overflow-hidden bg-ink-50">
@@ -219,14 +220,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* горна лента */}
         <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-ink-200 bg-white px-4">
           <div className="flex min-w-0 items-center gap-2 text-sm">
-            <Link to="/" className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100">
+            <Link to="/nachalo" className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100">
               <Icon name="home" size={17} />
             </Link>
             {crumbs.length > 0 && <Icon name="chevron" size={14} className="shrink-0 text-ink-300" />}
             <span className="truncate font-semibold text-ink-800">
-              {crumbs.length === 0
+              {current?.name ?? (crumbs.length === 0
                 ? 'Начало'
-                : crumbs[0].charAt(0).toUpperCase() + crumbs[0].slice(1)}
+                : crumbs[0].charAt(0).toUpperCase() + crumbs[0].slice(1))}
             </span>
             {mode === 'local' && (
               <Badge tone="warn" className="ml-2 hidden md:inline-flex">
