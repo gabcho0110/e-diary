@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #f5f8fc;
+  color: #0f1c33;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c3ccda;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #a5b1c4;
+  background-clip: content-box;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-ink-200/70 bg-white shadow-card;
+  }
+  .label {
+    @apply mb-1 block text-[12px] font-semibold uppercase tracking-wide text-ink-500;
+  }
+  .input {
+    @apply w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900
+      outline-none transition placeholder:text-ink-400
+      focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 disabled:bg-ink-50 disabled:text-ink-400;
+  }
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg px-3.5 py-2
+      text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800;
+  }
+  .btn-ghost {
+    @apply btn border border-ink-200 bg-white text-ink-700 hover:bg-ink-50;
+  }
+  .btn-danger {
+    @apply btn bg-danger text-white hover:brightness-95;
+  }
+  .btn-ok {
+    @apply btn bg-ok text-white hover:brightness-95;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold;
+  }
+  .th {
+    @apply whitespace-nowrap px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-ink-500;
+  }
+  .td {
+    @apply px-3 py-2.5 text-sm text-ink-800;
+  }
+}
+
+/* Grade pill colours follow the Bulgarian convention: higher = better. */
+.g2 { background: #fde8e8; color: #b42318; }
+.g3 { background: #fdf0e3; color: #b25e09; }
+.g4 { background: #fdf7e0; color: #8a6d05; }
+.g5 { background: #e6f4ea; color: #1f7a45; }
+.g6 { background: #dff0fb; color: #10618f; }
