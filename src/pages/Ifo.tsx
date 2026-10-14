@@ -1,10 +1,18 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
 import { Badge, Card, EmptyState, Field, Icon, Input, Modal, PageHeader, Select, Stat, Table, Tabs, Textarea, formatDate } from '../components/ui'
 
 export default function Ifo() {
   const { db, myClasses, update, user, studentName, subjectName, className, studentsOf } = useApp()
-  const [tab, setTab] = useState('ifo')
+  // табът се задава и от адреса (връзки от страничното меню): /ifo?tab=dplr
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') ?? 'ifo'
+  const setTab = (t: string) => {
+    const p = new URLSearchParams(params)
+    if (t && t !== 'ifo') p.set('tab', t); else p.delete('tab')
+    setParams(p, { replace: true })
+  }
   const [open, setOpen] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
 

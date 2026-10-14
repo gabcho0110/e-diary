@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
 import type { Grade, GradeType, Absence, Student } from '../lib/types'
 import {
@@ -786,9 +787,22 @@ function NotesTab({ classId }: { classId: string }) {
 // ── Основен компонент ────────────────────────────────────────────────────────
 export default function Dnevnik() {
   const { db, myClasses, mySubjects, isAdmin, user, className } = useApp()
-  const [tab, setTab] = useState('grades')
-  const [classId, setClassId] = useState(myClasses[0]?.id ?? '')
-  const [subjectId, setSubjectId] = useState('')
+
+  // Състоянието живее в адреса, за да могат връзките от страничното меню
+  // да водят направо до паралелка/разписание: /dnevnik?tab=schedule&class=cls_3
+  const [params, setParams] = useSearchParams()
+  const setView = (next: { tab?: string; klass?: string; subject?: string }) => {
+    const p = new URLSearchParams(params)
+    if (next.tab !== undefined) { if (next.tab) p.set('tab', next.tab); else p.delete('tab') }
+    if (next.klass !== undefined) { if (next.klass) p.set('class', next.klass); else p.delete('class') }
+    if (next.subject !== undefined) { if (next.subject) p.set('subject', next.subject); else p.delete('subject') }
+    setParams(p, { replace: true })
+  }
+
+  const requested = params.get('class') ?? ''
+  const classId = myClasses.some((c) => c.id === requested) ? requested : (myClasses[0]?.id ?? '')
+  const tab = params.get('tab') ?? 'grades'
+  const subjectId = params.get('subject') ?? ''
 
   const klass = db.classes.find((c) => c.id === classId)
   const classSubjects = useMemo(
@@ -811,7 +825,7 @@ export default function Dnevnik() {
         icon="book"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={classId} onChange={(e) => { setClassId(e.target.value); setSubjectId('') }} className="w-auto min-w-[130px]">
+            <Select value={classId} onChange={(e) => setView({ klass: e.target.value, subject: '' })} className="w-auto min-w-[130px]">
               {myClasses.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}{c.profile ? ` — ${c.profile}` : ''}</option>
               ))}
@@ -842,7 +856,7 @@ export default function Dnevnik() {
           { id: 'students', label: 'Ученици', count: klass?.studentIds.length },
         ]}
         active={tab}
-        onChange={setTab}
+        onChange={(t) => setView({ tab: t })}
       />
 
       {tab === 'grades' && (
@@ -851,7 +865,7 @@ export default function Dnevnik() {
             {classSubjects.map((s) => (
               <button
                 key={s.id}
-                onClick={() => setSubjectId(s.id)}
+                onClick={() => setView({ subject: s.id })}
                 className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium transition ${
                   activeSubject === s.id
                     ? 'border-brand-500 bg-brand-50 text-brand-800'
