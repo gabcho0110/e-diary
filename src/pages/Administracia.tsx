@@ -161,7 +161,7 @@ export default function Administracia() {
         <Card pad={false}>
           <div className="border-b border-ink-200 px-5 py-3.5">
             <h2 className="font-bold text-ink-900">Матрица на правата по модули</h2>
-            <p className="text-[12px] text-ink-500">Кои роли имат достъп до всеки от 29-те модула.</p>
+            <p className="text-[12px] text-ink-500">Кои роли имат достъп до всеки от 28-те модула.</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[12px]">

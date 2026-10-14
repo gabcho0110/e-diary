@@ -50,7 +50,15 @@ const ADMIN: RoleId[] = ['sysadmin', 'director', 'deputy']
 const TEACH: RoleId[] = ['sysadmin', 'director', 'deputy', 'teacher', 'class_teacher', 'educator', 'resource_teacher']
 const FAMILY: RoleId[] = ['parent', 'student']
 
-/** Всичките 29 модула на електронния дневник. */
+/**
+ * Всичките 28 модула на електронния дневник.
+ *
+ * Изведено от 30-те секции в категория „Дневник" на help.shkolo.com:
+ *   − „Абонаменти"            → премахнат по изрично искане
+ *   − „Регистрация и вход"    → това е страницата за вход, не модул в менюто
+ *   − „ИФО" и „ДПЛР"          → обединени в един модул (`ifo`)
+ *   = 27 модула + „Начало"    = 28
+ */
 export const MODULES: ModuleDef[] = [
   {
     id: 'nachalo',

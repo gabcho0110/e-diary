@@ -101,7 +101,7 @@ export default function Login() {
 
           <div className="mt-9 grid max-w-lg grid-cols-3 gap-3">
             {[
-              ['29', 'модула'],
+              ['28', 'модула'],
               ['16', 'роли'],
               ['500+', 'функции'],
             ].map(([n, l]) => (
