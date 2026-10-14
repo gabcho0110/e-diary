@@ -317,26 +317,56 @@ export function buildDB(): DB {
 
   activeStudents.forEach((st) => {
     const k = classes.find((c) => c.id === st.classId)!
-    // по-малко предмети за по-големите класове, за да не расте безкрайно
-    const subs = k.subjectIds.slice(0, k.grade >= 9 ? 8 : 10)
+    // оценки по всички предмети на паралелката — иначе в класната книга
+    // остават предмети с нула оценки
+    const subs = k.subjectIds
     subs.forEach((sid) => {
       const teacher = teachers.find((t) => t.subjectIds?.includes(sid)) ?? teachers[0]
-      const n = int(2, 4)
+      const gradeValue = () => (st.sen ? int(3, 5) : chance(0.14) ? int(2, 4) : int(4, 6))
+
+      // текущи оценки — разпределени между двата срока.
+      // Броят е умишлено нисък: базата се пази и в localStorage (лимит ~5 MB).
+      const n = int(1, 3)
+      const firstTerm = Math.max(1, Math.round(n / 2))
       for (let i = 0; i < n; i++) {
         gi++
-        const base = st.sen ? int(3, 5) : chance(0.14) ? int(2, 4) : int(4, 6)
+        const term: 1 | 2 = i < firstTerm ? 1 : 2
+        const when = term === 1 ? d(YEAR, int(9, 12), int(1, 28)) : d(YEAR + 1, int(1, 6), int(1, 28))
         grades.push({
           id: uid('grd', gi),
           studentId: st.id, subjectId: sid, classId: k.id,
-          value: base,
+          value: gradeValue(),
           type: pick(GRADE_TYPES),
-          date: d(YEAR, int(9, 12), int(1, 28)),
-          term: 1,
+          date: when,
+          term,
           comment: chance(0.12) ? pick(['Отлично представяне', 'Да се обърне внимание на задачите', 'Добра подготовка', 'Непълно решение']) : undefined,
           teacherId: teacher.id,
           draft: chance(0.04),
           qualitative: st.sen && chance(0.3) ? pick(['Постига очакваните резултати', 'Постига частично очакваните резултати', 'Надгражда очакваните резултати']) : undefined,
-          createdAt: d(YEAR, int(9, 12), int(1, 28)),
+          createdAt: when,
+        })
+      }
+
+      // срочна оценка — не за всеки ученик/предмет (срокът може да не е приключил)
+      ;([1, 2] as const).forEach((term) => {
+        if (!chance(term === 1 ? 0.7 : 0.45)) return
+        gi++
+        const when = term === 1 ? d(YEAR, 12, 20) : d(YEAR + 1, 6, 15)
+        grades.push({
+          id: uid('grd', gi), studentId: st.id, subjectId: sid, classId: k.id,
+          value: gradeValue(), type: 'Срочна', date: when, term,
+          teacherId: teacher.id, draft: false, createdAt: when,
+        })
+      })
+
+      // годишна — само там, където учебната година е приключила
+      if (chance(0.18)) {
+        gi++
+        const when = d(YEAR + 1, 6, 28)
+        grades.push({
+          id: uid('grd', gi), studentId: st.id, subjectId: sid, classId: k.id,
+          value: gradeValue(), type: 'Годишна', date: when, term: 2,
+          teacherId: teacher.id, draft: false, createdAt: when,
         })
       }
     })
@@ -372,14 +402,16 @@ export function buildDB(): DB {
       const excused = chance(0.42)
       const sid = pick(k.subjectIds)
       const teacher = teachers.find((t) => t.subjectIds?.includes(sid)) ?? teachers[0]
+      // отсъствия през цялата учебна година, не само в първия срок
+      const when = chance(0.45) ? d(YEAR, int(9, 12), int(1, 28)) : d(YEAR + 1, int(1, 6), int(1, 28))
       absences.push({
         id: uid('abs', ai), studentId: st.id, classId: k.id,
-        date: d(YEAR, int(9, 12), int(1, 28)),
+        date: when,
         period: int(1, 7), subjectId: sid,
         reason: excused ? pick(['извинено', 'семейни причини'] as const) : pick(['неизвинено', 'закъснение'] as const),
         excused,
         note: excused && chance(0.5) ? pick(['Медицинска бележка №' + int(1000, 9999), 'Родителска бележка', 'Състезание']) : undefined,
-        teacherId: teacher.id, createdAt: d(YEAR, int(9, 12), int(1, 28)),
+        teacherId: teacher.id, createdAt: when,
       })
     }
   })
@@ -403,7 +435,7 @@ export function buildDB(): DB {
         kind,
         badge: kind === 'Похвала' ? pick(['🌟', '🏅', '👏', '💡']) : undefined,
         teacherId: pick(teachers).id,
-        date: d(YEAR, int(9, 12), int(1, 28)),
+        date: chance(0.5) ? d(YEAR, int(9, 12), int(1, 28)) : d(YEAR + 1, int(1, 6), int(1, 28)),
         visibleToParent: true,
       })
     }

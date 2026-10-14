@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
-import type { Grade, GradeType, Absence, Student } from '../lib/types'
+import type { Grade, GradeType, Absence, Student, Klass, Subject } from '../lib/types'
 import {
   Badge, Card, EmptyState, Field, GradePill, Icon, Input, Modal, PageHeader,
   SearchInput, Select, Table, Tabs, Textarea, avgFmt, formatDate,
@@ -218,107 +218,299 @@ function EditGradeModal({ grade, onClose }: { grade: Grade | null; onClose: () =
   )
 }
 
-// ── Таб: Оценки ──────────────────────────────────────────────────────────────
-function GradesTab({ classId, subjectId }: { classId: string; subjectId: string }) {
-  const { db, studentsOf, subjectName, userName, user, isAdmin } = useApp()
+// ── Таб: Оценки (класна книга) ───────────────────────────────────────────────
+/** Оценки, които не са „текущи" — срочни, годишни, изпити за ниво. */
+const NON_CURRENT: GradeType[] = [
+  'Срочна', 'Годишна', 'Входно ниво', 'Междинно ниво', 'Изходно ниво', 'Поправителен изпит',
+]
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null)
+const nameOf = (s: Student) =>
+  `${s.firstName} ${s.middleName ? `${s.middleName[0]}. ` : ''}${s.lastName}`
+
+function GradebookTab({
+  classId, subjectId, klass, subjects, onSelectSubject,
+}: {
+  classId: string
+  subjectId: string
+  klass: Klass
+  subjects: Subject[]
+  onSelectSubject: (id: string) => void
+}) {
+  const { db, subjectName, user, isAdmin, isStaff, deleteGrade } = useApp()
   const [open, setOpen] = useState(false)
   const [edit, setEdit] = useState<Grade | null>(null)
   const [showDrafts, setShowDrafts] = useState(false)
+  const [showFilter, setShowFilter] = useState(false)
+  const [picked, setPicked] = useState<Record<string, boolean>>({})
 
-  const students = studentsOf(classId)
+  // всички ученици на паралелката, включително преместените — те се показват в червено,
+  // както е в референтния дневник
+  const students = useMemo(
+    () => db.students.filter((s) => s.classId === classId).sort((a, b) => a.number - b.number),
+    [db.students, classId],
+  )
   const grades = useMemo(
     () => db.grades.filter((g) => g.classId === classId && g.subjectId === subjectId),
     [db.grades, classId, subjectId],
   )
 
-  const byStudent = (sid: string) =>
+  /** оценките на ученик за срок и вид (текущи / срочна / годишна) */
+  const cell = (sid: string, term: 1 | 2, kind: 'cur' | 'sro' | 'god') =>
     grades
-      .filter((g) => g.studentId === sid && (showDrafts || !g.draft))
+      .filter((g) => {
+        if (g.studentId !== sid) return false
+        if (g.draft && !showDrafts) return false
+        if (kind === 'god') return g.type === 'Годишна'
+        if (kind === 'sro') return g.type === 'Срочна' && g.term === term
+        return !NON_CURRENT.includes(g.type) && g.term === term
+      })
       .sort((a, b) => a.date.localeCompare(b.date))
 
-  const clsAvg = (() => {
-    const vals = students.flatMap((s) =>
-      byStudent(s.id).filter((g) => !['Входно ниво', 'Междинно ниво', 'Изходно ниво'].includes(g.type)).map((g) => g.value),
+  const classAvg = mean(
+    students.flatMap((s) => [...cell(s.id, 1, 'cur'), ...cell(s.id, 2, 'cur')].map((g) => g.value)),
+  )
+
+  /** брой оценки по предмет за двата срока — за левия панел.
+   *  Броят се вписванията (дата + вид), не отделните оценки на всеки ученик. */
+  const subjectCount = (sid: string) => {
+    const list = db.grades.filter(
+      (g) =>
+        g.classId === classId &&
+        g.subjectId === sid &&
+        (showDrafts || !g.draft) &&
+        !NON_CURRENT.includes(g.type),
     )
-    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
-  })()
+    const events = (term: 1 | 2) =>
+      new Set(list.filter((g) => g.term === term).map((g) => `${g.date}|${g.type}`)).size
+    return { t1: events(1), t2: events(2) }
+  }
 
   const teacher = db.users.find((u) => u.subjectIds?.includes(subjectId) && (isAdmin || u.id === user?.id))
     ?? db.users.find((u) => u.subjectIds?.includes(subjectId))
+  const homeroom = db.users.find((u) => u.id === klass.homeroomTeacherId)
+  const deputies = db.users.filter(
+    (u) => u.subjectIds?.includes(subjectId) && u.id !== teacher?.id && (u.roles.includes('teacher') || u.roles.includes('class_teacher')),
+  ).slice(0, 2)
+
+  const pickedIds = Object.entries(picked).filter(([, v]) => v).map(([k]) => k)
+  const removePicked = () => {
+    const doomed = grades.filter((g) => pickedIds.includes(g.studentId))
+    if (!doomed.length) return
+    if (!window.confirm(`Да се изтрият ли ${doomed.length} оценки по „${subjectName(subjectId)}" за избраните ученици?`)) return
+    doomed.forEach((g) => deleteGrade(g.id))
+    setPicked({})
+  }
+
+  const gradeCell = (list: Grade[], showAvg = true) => {
+    const av = mean(list.map((g) => g.value))
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        {list.map((g) => {
+          const tip = `${g.type} · ${formatDate(g.date)}${g.draft ? ' · чернова' : ''}`
+          const pill = <span className={g.draft ? 'opacity-50' : ''}><GradePill value={g.value} /></span>
+          // родител и ученик виждат оценките, но не могат да ги редактират
+          return isStaff ? (
+            <button key={g.id} onClick={() => setEdit(g)} title={tip}>{pill}</button>
+          ) : (
+            <span key={g.id} title={tip}>{pill}</span>
+          )
+        })}
+        {showAvg && av !== null && <span className="text-[11px] text-ink-400">({av.toFixed(2)})</span>}
+      </div>
+    )
+  }
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button onClick={() => setOpen(true)} className="btn-primary">
-          <Icon name="plus" size={15} /> Добави
-        </button>
-        <button onClick={() => window.print()} className="btn-ghost">
-          <Icon name="print" size={15} /> Принтирай
-        </button>
-        <label className="ml-1 flex items-center gap-2 text-[13px] text-ink-600">
-          <input type="checkbox" checked={showDrafts} onChange={(e) => setShowDrafts(e.target.checked)} className="h-4 w-4 rounded" />
-          Покажи черновите
-        </label>
-        <div className="ml-auto flex items-center gap-3 text-[13px] text-ink-500">
-          <span>{students.length} ученика</span>
-          <span className="h-4 w-px bg-ink-200" />
-          <span>Среден успех на класа: <b className="text-ink-800">{avgFmt(clsAvg)}</b></span>
+      {/* лента на паралелката + бърз избор на предмет */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-3.5 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-600 text-[11px] font-bold text-white">
+            {klass.grade}{klass.letter}
+          </span>
+          <span className="truncate text-[13px] font-semibold text-ink-800">
+            {klass.name}
+            {homeroom && <> — {homeroom.firstName} {homeroom.lastName} <span className="font-normal text-ink-500">(класен)</span></>}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {subjects.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onSelectSubject(s.id)}
+              title={s.name}
+              className={`rounded-md border px-2 py-1 text-[11px] font-bold transition ${
+                s.id === subjectId
+                  ? 'border-brand-500 bg-brand-50 text-brand-800'
+                  : 'border-ink-200 bg-white text-ink-500 hover:border-ink-300 hover:text-ink-700'
+              }`}
+            >
+              {s.short}
+            </button>
+          ))}
         </div>
       </div>
 
-      {!teacher && (
-        <div className="mb-3">
-          <Badge tone="warn">Няма назначен учител по този предмет в паралелката</Badge>
+      {/* действия */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {isStaff && (
+          <>
+            <button onClick={() => setOpen(true)} className="btn bg-ok text-white hover:brightness-95">
+              <Icon name="plus" size={15} /> Добави
+            </button>
+            <button
+              onClick={removePicked}
+              disabled={!pickedIds.length}
+              className="btn bg-danger text-white hover:brightness-95"
+            >
+              <Icon name="close" size={15} /> Изтрий{pickedIds.length ? ` (${pickedIds.length})` : ''}
+            </button>
+          </>
+        )}
+        <button onClick={() => window.print()} className="btn bg-warn text-white hover:brightness-95">
+          <Icon name="print" size={15} /> Принтирай
+        </button>
+        <button onClick={() => setShowFilter((v) => !v)} className="btn-ghost ml-auto">
+          <Icon name="filter" size={15} /> Филтър
+        </button>
+      </div>
+
+      {showFilter && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3 text-[13px] text-ink-600">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={showDrafts} onChange={(e) => setShowDrafts(e.target.checked)} className="h-4 w-4 rounded" />
+            Покажи черновите
+          </label>
+          <span className="h-4 w-px bg-ink-200" />
+          <span>{students.length} ученика</span>
+          <span className="h-4 w-px bg-ink-200" />
+          <span>Среден успех на класа: <b className="text-ink-800">{avgFmt(classAvg)}</b></span>
+          {isStaff && (
+            <button
+              onClick={() => setPicked({})}
+              className="ml-auto text-[12px] font-semibold text-brand-700 hover:underline"
+            >
+              Изчисти избора
+            </button>
+          )}
         </div>
       )}
 
-      <Table
-        head={
-          <>
-            <th className="th w-12">№</th>
-            <th className="th">Ученик</th>
-            <th className="th">Оценки</th>
-            <th className="th w-24">Среден</th>
-          </>
-        }
-      >
-        {students.map((s) => {
-          const gs = byStudent(s.id)
-          const real = gs.filter((g) => !['Входно ниво', 'Междинно ниво', 'Изходно ниво'].includes(g.type))
-          const avg = real.length ? real.reduce((a, g) => a + g.value, 0) / real.length : null
-          return (
-            <tr key={s.id} className="hover:bg-ink-50/60">
-              <td className="td font-bold text-ink-400">{s.number}</td>
-              <td className="td">
-                <span className="font-medium">{s.firstName} {s.lastName}</span>
-                {s.sen && <Badge tone="purple" className="ml-2">СОП</Badge>}
-                {s.status !== 'активен' && <Badge tone="danger" className="ml-2">{s.status}</Badge>}
-              </td>
-              <td className="td">
-                <div className="flex flex-wrap items-center gap-1">
-                  {gs.map((g) => (
-                    <button key={g.id} onClick={() => setEdit(g)} title={`${g.type} · ${formatDate(g.date)}${g.draft ? ' · чернова' : ''}`}>
-                      <span className={g.draft ? 'opacity-50' : ''}>
-                        <GradePill value={g.value} />
-                      </span>
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setOpen(true)}
-                    className="grid h-7 w-7 place-items-center rounded-md border border-dashed border-ink-300 text-ink-400 hover:border-brand-400 hover:text-brand-600"
-                  >
-                    <Icon name="plus" size={13} />
-                  </button>
-                </div>
-              </td>
-              <td className="td font-bold text-ink-800">{avgFmt(avg)}</td>
-            </tr>
-          )
-        })}
-      </Table>
+      <div className="grid gap-3 lg:grid-cols-[250px_minmax(0,1fr)]">
+        {/* предмети */}
+        <div className="card max-h-[72vh] overflow-y-auto p-1.5">
+          {subjects.map((s) => {
+            const c = subjectCount(s.id)
+            const on = s.id === subjectId
+            return (
+              <button
+                key={s.id}
+                onClick={() => onSelectSubject(s.id)}
+                className={`flex w-full items-center gap-1.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] transition ${
+                  on ? 'bg-brand-50 font-semibold text-brand-800' : 'text-ink-700 hover:bg-ink-50'
+                }`}
+              >
+                <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                <span className="g5 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold">{c.t1}</span>
+                <span className="g6 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold">{c.t2}</span>
+              </button>
+            )
+          })}
+        </div>
 
-      <GradeModal open={open} onClose={() => setOpen(false)} students={students} subjectId={subjectId} classId={classId} />
-      <EditGradeModal grade={edit} onClose={() => setEdit(null)} />
+        {/* класна книга */}
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-[13px] font-bold text-ink-900">
+              {subjectName(subjectId)}
+              {teacher && <span className="font-normal text-ink-600"> — {teacher.firstName} {teacher.lastName}</span>}
+            </p>
+            <p className="text-[11px] text-ink-500">
+              Заместители:{' '}
+              {deputies.length
+                ? deputies.map((d) => `${d.firstName} ${d.lastName}`).join(', ')
+                : '—'}
+            </p>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-ink-200 bg-white">
+            <table className="w-full border-collapse">
+              <thead className="bg-ink-50">
+                <tr>
+                  <th className="th w-14" rowSpan={2}>№</th>
+                  <th className="th" rowSpan={2}>Ученик</th>
+                  <th className="th border-l border-ink-200 text-center" colSpan={2}>Първи срок</th>
+                  <th className="th border-l border-ink-200 text-center" colSpan={2}>Втори срок</th>
+                  <th className="th border-l border-ink-200 text-center" rowSpan={2}>Годишна</th>
+                </tr>
+                <tr>
+                  <th className="th border-l border-ink-200 text-center">Текущи</th>
+                  <th className="th text-center">Срочна</th>
+                  <th className="th border-l border-ink-200 text-center">Текущи</th>
+                  <th className="th text-center">Срочна</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100">
+                {students.map((s) => {
+                  const isPicked = !!picked[s.id]
+                  const left = s.status !== 'активен'
+                  return (
+                    <tr
+                      key={s.id}
+                      className={`${left ? 'bg-[#fde8e8]/70' : isPicked ? 'bg-brand-50/60' : ''} hover:bg-ink-50/60`}
+                    >
+                      <td className="td">
+                        <div className="flex items-center gap-2">
+                          {isStaff && (
+                            <input
+                              type="checkbox"
+                              checked={isPicked}
+                              onChange={(e) => setPicked((p) => ({ ...p, [s.id]: e.target.checked }))}
+                              className="h-3.5 w-3.5 rounded border-ink-300"
+                            />
+                          )}
+                          <span className="text-[12px] font-bold text-ink-400">{s.number}</span>
+                        </div>
+                      </td>
+                      <td className="td">
+                        <span className="font-medium">{nameOf(s)}</span>
+                        {s.sen && <Badge tone="purple" className="ml-1.5">СОП</Badge>}
+                        {left && <span className="ml-1.5 text-[11px] text-[#b42318]">({s.status})</span>}
+                      </td>
+                      {([1, 2] as const).map((term) => (
+                        <Fragment key={term}>
+                          <td className="td border-l border-ink-100 align-top">
+                            {gradeCell(cell(s.id, term, 'cur'))}
+                          </td>
+                          <td className="td align-top">
+                            {gradeCell(cell(s.id, term, 'sro'), false)}
+                          </td>
+                        </Fragment>
+                      ))}
+                      <td className="td border-l border-ink-100 align-top">
+                        {gradeCell(cell(s.id, 1, 'god'), false)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {!teacher && (
+            <div className="mt-3">
+              <Badge tone="warn">Няма назначен учител по този предмет в паралелката</Badge>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isStaff && (
+        <>
+          <GradeModal open={open} onClose={() => setOpen(false)} students={students} subjectId={subjectId} classId={classId} />
+          <EditGradeModal grade={edit} onClose={() => setEdit(null)} />
+        </>
+      )}
     </>
   )
 }
@@ -860,28 +1052,17 @@ export default function Dnevnik() {
       />
 
       {tab === 'grades' && (
-        <>
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {classSubjects.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setView({ subject: s.id })}
-                className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium transition ${
-                  activeSubject === s.id
-                    ? 'border-brand-500 bg-brand-50 text-brand-800'
-                    : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300'
-                }`}
-              >
-                {s.name}
-              </button>
-            ))}
-          </div>
-          {activeSubject ? (
-            <GradesTab classId={classId} subjectId={activeSubject} />
-          ) : (
-            <EmptyState title="Няма предмети" text="За тази паралелка не са зададени предмети." icon="list" />
-          )}
-        </>
+        klass && activeSubject ? (
+          <GradebookTab
+            classId={classId}
+            subjectId={activeSubject}
+            klass={klass}
+            subjects={classSubjects}
+            onSelectSubject={(id) => setView({ subject: id })}
+          />
+        ) : (
+          <EmptyState title="Няма предмети" text="За тази паралелка не са зададени предмети." icon="list" />
+        )
       )}
 
       {tab === 'absences' && <AbsencesTab classId={classId} subjectId={activeSubject} />}
