@@ -118,6 +118,16 @@ export interface Student {
   doctor?: string
   photo?: string
   admittedAt: string
+  /** място на раждане — показва се в раздел „Ученици" */
+  birthPlace?: string
+  /** освободен от оценяване по ФВС и др. */
+  exemptFromGrades?: boolean
+  /** наложена забрана за оценяване */
+  gradesBlocked?: boolean
+  /** задължителни предмети (ЗП) — утвърдени от педагогическия съвет */
+  mandatorySubjects?: boolean
+  /** лично дело: код на документ → дата на получаване */
+  documents?: Record<string, string>
 }
 
 export type GradeType =
@@ -165,6 +175,10 @@ export interface Absence {
   note?: string
   teacherId: string
   createdAt: string
+  /** отсъствал е целия ден — брои се за всички часове */
+  wholeDay?: boolean
+  /** мотивът, с който е уважено отсъствието */
+  excuseReason?: string
 }
 
 export interface Note {
@@ -213,6 +227,9 @@ export interface Exam {
   period: number
   kind: 'Контролна работа' | 'Класна работа' | 'Тест' | 'Диктовка'
   topic: string
+  /** кога и от кого е добавена — показва се в раздел „Контролни" */
+  createdById?: string
+  createdAt?: string
 }
 
 export interface Message {
@@ -323,7 +340,16 @@ export interface ThemePlan {
   classId: string
   teacherId: string
   year: string
-  rows: { no: number; topic: string; hours: number; month: string; taken: boolean; date?: string }[]
+  rows: {
+    no: number
+    topic: string
+    hours: number
+    month: string
+    taken: boolean
+    date?: string
+    /** НЗ — нови знания, УПР — упражнение, ТК — текущ контрол, ДЗ — домашна работа */
+    kind?: 'НЗ' | 'УПР' | 'ТК' | 'ДЗ'
+  }[]
   file?: string
 }
 
@@ -457,6 +483,97 @@ export interface SyncLog {
   message: string
 }
 
+// ── Раздели в модул „Дневник" ───────────────────────────────────────────────
+
+/** Санкции — заповеди по ЗПУО (забележка, преместване, изключване…). */
+export interface Sanction {
+  id: string
+  studentId: string
+  classId: string
+  /** вид на санкцията, напр. „Забележка", „Преместване в друга паралелка…" */
+  kind: string
+  /** номер на заповедта, напр. „РД-006" */
+  orderNo: string
+  orderDate: string
+  from: string
+  to: string
+  authorId: string
+}
+
+/** Бележка до родител — отделна от отзивите. */
+export interface ClassNote {
+  id: string
+  studentId: string
+  classId: string
+  text: string
+  date: string
+  authorId: string
+  createdAt: string
+  editedById?: string
+}
+
+/** Ученическа подкрепа — екип, дейности, основание. */
+export interface SupportPlan {
+  id: string
+  classId: string
+  studentId: string
+  /** помощна дейност, напр. „Допълнителна консултация по математика" */
+  activity: string
+  date: string
+  /** основание — напр. „Оценка на потребностите" */
+  ground: string
+  /** екипът, който работи с ученика */
+  participantIds: string[]
+  authorId: string
+}
+
+/** ВЧК — втори час на класа (занимания по интереси/класни дейности). */
+export interface VhkLesson {
+  id: string
+  classId: string
+  kind: string
+  from: string
+  to: string
+  /** датата, на която е маркиран като взет */
+  takenOn: string
+  roomId?: string
+  teacherId: string
+  description: string
+}
+
+/** Родителска среща, насрочена от класния ръководител. */
+export interface ClassMeeting {
+  id: string
+  classId: string
+  title: string
+  from: string
+  to: string
+  authorId: string
+  createdAt: string
+}
+
+/** Поправителен изпит — три сесии (I, II и допълнителна). */
+export interface CorrectionalExam {
+  id: string
+  classId: string
+  studentId: string
+  subjectId: string
+  session1?: number
+  session2?: number
+  sessionExtra?: number
+}
+
+/** Приравнителен изпит — вписва се като годишна оценка за учебната година. */
+export interface EquivalenceExam {
+  id: string
+  classId: string
+  studentId: string
+  subjectId: string
+  /** учебна година, напр. „2025-2026" */
+  year: string
+  grade: number
+}
+
 export interface AuditEntry {
   id: string
   userId: string
@@ -497,4 +614,12 @@ export interface DB {
   ifoDiaries: IfoDiary[]
   syncLogs: SyncLog[]
   audit: AuditEntry[]
+  // раздели в „Дневник"
+  sanctions: Sanction[]
+  classNotes: ClassNote[]
+  supportPlans: SupportPlan[]
+  vhkLessons: VhkLesson[]
+  classMeetings: ClassMeeting[]
+  correctionalExams: CorrectionalExam[]
+  equivalenceExams: EquivalenceExam[]
 }

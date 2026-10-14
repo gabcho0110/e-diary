@@ -80,6 +80,77 @@ body {
   }
 }
 
+/* ── Модул „Дневник": лента с раздели и лента с действия ─────────────────────
+   Цветовете са взети от референтния дневник, за да съвпадат двете ленти. */
+:root {
+  --dn-teal: #32c5d2;
+  --dn-teal-badge: #36c6d3;
+  --dn-amber: #f1c40f;
+  --dn-gold: #c49f47;
+  --dn-green: #26c281;
+  --dn-blue: #3598dc;
+  --dn-purple: #8e44ad;
+  --dn-red: #e7505a;
+  --dn-label: #337ab7;
+  --dn-olive: #c5bf66;
+  --dn-salmon: #ffbcb4;
+  --dn-line: #e7ecf1;
+}
+
+@layer components {
+  /* раздел в лентата */
+  .dt {
+    @apply relative inline-flex shrink-0 items-center gap-1.5 border-r border-[var(--dn-line)]
+      px-2.5 py-2.5 text-[12.5px] font-semibold text-[var(--dn-label)] transition
+      hover:bg-[#f2fafb];
+  }
+  .dt-on {
+    @apply bg-[#e6f7f9] text-[#12707d];
+  }
+  .dt-on::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 -1px 0;
+    height: 2px;
+    background: var(--dn-teal);
+  }
+  /* брояч в лентата с раздели */
+  .dt-c {
+    @apply inline-grid h-[17px] min-w-[30px] place-items-center rounded-full px-1.5
+      text-[10.5px] font-bold text-white;
+    background: var(--dn-teal-badge);
+  }
+  .dt-c0 {
+    background: var(--dn-amber);
+  }
+  .dt-on .dt-c {
+    background: var(--dn-teal);
+  }
+
+  /* бутон от лентата с действия */
+  .db {
+    @apply inline-flex select-none items-center gap-1.5 rounded-[3px] px-2.5 py-1.5
+      text-[12.5px] font-semibold text-white transition hover:brightness-95
+      disabled:cursor-not-allowed disabled:opacity-45;
+  }
+  .db-teal { background: var(--dn-teal); }
+  .db-green { background: var(--dn-green); }
+  .db-blue { background: var(--dn-blue); }
+  .db-purple { background: var(--dn-purple); }
+  .db-red { background: var(--dn-red); }
+  .db-gold { background: var(--dn-gold); }
+
+  /* клетка с бройка в таблиците на разделите */
+  .dn-num {
+    @apply grid h-[22px] min-w-[46px] place-items-center rounded-[2px] px-2 text-[12px] font-bold text-white;
+  }
+  .dn-olive { background: var(--dn-olive); }
+  .dn-salmon { background: var(--dn-salmon); }
+  .dn-green { background: var(--dn-green); }
+  .dn-zero { @apply bg-[#f1f4f8] text-ink-400; }
+  .dn-link { @apply text-[#2b6ca3] hover:underline; }
+}
+
 /* Grade pill colours follow the Bulgarian convention: higher = better. */
 .g2 { background: #fde8e8; color: #b42318; }
 .g3 { background: #fdf0e3; color: #b25e09; }

@@ -22,7 +22,23 @@ const COLLECTIONS = [
   'events', 'meetings', 'activities', 'themePlans', 'fees', 'rooms',
   'competitions', 'portfolios', 'studentProfiles', 'attestations',
   'lessonAbsences', 'docs', 'virtualRooms', 'ifoDiaries', 'syncLogs', 'audit',
+  // раздели в „Дневник"
+  'sanctions', 'classNotes', 'supportPlans', 'vhkLessons', 'classMeetings',
+  'correctionalExams', 'equivalenceExams',
 ] as const
+
+/**
+ * По-стари копия на базата (от преди добавянето на новите раздели) нямат тези
+ * масиви. Без тази поправка всяко `db.sanctions.map(...)` щеше да гърми.
+ */
+function hydrate(db: DB): DB {
+  const d = db as unknown as Record<string, unknown>
+  for (const coll of COLLECTIONS) {
+    if (!Array.isArray(d[coll])) d[coll] = []
+  }
+  if (!Array.isArray(d.audit)) d.audit = []
+  return db
+}
 
 // ── Преобразуване между модела и това, което се пази във Firebase ───────────
 //
@@ -73,7 +89,7 @@ function fromWire(wire: Wire): DB {
   for (const coll of COLLECTIONS) {
     ;(out as unknown as Record<string, unknown>)[coll] = buckets[coll]
   }
-  return out
+  return hydrate(out)
 }
 
 function isUsable(db: DB): boolean {
@@ -114,7 +130,7 @@ function readLocalCache(): DB | null {
     const raw = localStorage.getItem(KEY_LOCAL)
     if (!raw) return null
     const db = JSON.parse(raw) as DB
-    return isUsable(db) ? db : null
+    return isUsable(db) ? hydrate(db) : null
   } catch {
     return null
   }

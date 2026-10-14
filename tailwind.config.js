@@ -1,6 +1,16 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  /**
+   * Класовете на бутоните и клетките в модул „Дневник" се сглобяват динамично
+   * (`db-${tone}`, `dn-${tone}`), затова Tailwind не ги вижда в кода и ги
+   * изчиства. Тук са изброени изрично, за да оцелеят след билда.
+   */
+  safelist: [
+    'db-teal', 'db-green', 'db-blue', 'db-purple', 'db-red', 'db-gold',
+    'dn-olive', 'dn-salmon', 'dn-green', 'dn-zero',
+    'dt', 'dt-on', 'dt-c', 'dt-c0',
+  ],
   theme: {
     extend: {
       colors: {

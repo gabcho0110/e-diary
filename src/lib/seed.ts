@@ -3,6 +3,8 @@ import type {
   Exam, Message, Test, Material, Task, EventItem, MeetingSlot, Activity, ThemePlan,
   Fee, Room, Competition, Portfolio, StudentProfile, Attestation, LessonAbsence,
   GeneratedDoc, VirtualRoom, IfoDiary, SyncLog, GradeType, RoleId,
+  Sanction, ClassNote, SupportPlan, VhkLesson, ClassMeeting,
+  CorrectionalExam, EquivalenceExam,
 } from './types'
 
 // ── Детерминиран генератор, за да е стабилен наборът от данни ────────────────
@@ -38,12 +40,50 @@ const FEMALE = ['Мария', 'Иванка', 'Елена', 'Петя', 'Анн�
 const LAST = ['Иванов', 'Георгиев', 'Димитров', 'Петров', 'Николов', 'Стоянов', 'Кръстев', 'Тодоров', 'Христов', 'Василев', 'Атанасов', 'Борисов', 'Владимиров', 'Емилов', 'Желев', 'Кирилов', 'Мартинов', 'Недялков', 'Огнянов', 'Павлов', 'Радославов', 'Симеонов', 'Теодоров', 'Филипов', 'Цветанов', 'Чавдаров', 'Юлианов', 'Яворов', 'Александров', 'Божидаров', 'Викторов', 'Даниелов', 'Здравков', 'Илиев', 'Йорданов', 'Константинов', 'Мирославов', 'Орлинов', 'Пламенов', 'Росенов', 'Светославов', 'Траянов']
 
 const fem = (l: string) => (l.endsWith('ов') ? l + 'а' : l.endsWith('ев') ? l + 'а' : l)
-
 const STREETS = ['ул. „Витоша“', 'бул. „България“', 'ул. „Раковски“', 'бул. „Драган Цанков“', 'ул. „Шипка“', 'бул. „Мария Луиза“', 'ул. „Оборище“', 'бул. „Сливница“', 'ул. „Граф Игнатиев“', 'бул. „Цариградско шосе“']
 const DOCTORS = ['д-р Иванова', 'д-р Петров', 'д-р Костова', 'д-р Георгиева', 'д-р Ангелов', 'д-р Стоянова', 'д-р Тодоров']
 
 const d = (y: number, m: number, day: number) => `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 const uid = (p: string, i: number) => `${p}_${String(i).padStart(4, '0')}`
+
+/** Места на раждане — за колоната „Място на раждане" в раздел „Ученици". */
+const BIRTH_PLACES = [
+  'София', 'Пловдив', 'Варна', 'Бургас', 'Русе', 'Стара Загора', 'Плевен',
+  'Сливен', 'Добрич', 'Шумен', 'Перник', 'Хасково', 'Ямбол', 'Пазарджик',
+  'Благоевград', 'Велико Търново', 'Враца', 'Габрово', 'Кърджали', 'Монтана',
+]
+
+/**
+ * Документите в личното дело на ученика. Показват се като тесни колони с дата
+ * в раздел „Ученици", точно както е в референтния дневник.
+ */
+export const STUDENT_DOCS: { key: string; short: string; label: string }[] = [
+  { key: 'zayavlenie', short: 'ЗП', label: 'Заявление за прием' },
+  { key: 'akt', short: 'АР', label: 'Копие от акт за раждане' },
+  { key: 'medic', short: 'МС', label: 'Медицинско свидетелство' },
+  { key: 'vaksini', short: 'ВК', label: 'Карта за ваксинации' },
+  { key: 'gdpr', short: 'ДД', label: 'Декларация за защита на личните данни' },
+  { key: 'karton', short: 'ЛК', label: 'Личен картон на ученика' },
+  { key: 'dogovor', short: 'ДГ', label: 'Договор за обучение' },
+  { key: 'eplr', short: 'ЕП', label: 'Решение на ЕПЛР' },
+  { key: 'podkrepa', short: 'ПП', label: 'План за подкрепа' },
+  { key: 'izvan', short: 'СИ', label: 'Съгласие за извънкласни дейности' },
+  { key: 'otsastvia', short: 'ДО', label: 'Декларация за отсъствия' },
+  { key: 'belezka', short: 'СБ', label: 'Служебна бележка' },
+  { key: 'premestvane', short: 'ПР', label: 'Заповед за преместване' },
+]
+
+/** Личното дело — част от документите винаги присъстват, други само при СОП. */
+function personalFile(sen: boolean): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const doc of STUDENT_DOCS) {
+    const conditional = ['eplr', 'podkrepa'].includes(doc.key)
+    if (conditional && !sen) continue
+    if (!conditional && !chance(0.82)) continue
+    out[doc.key] = d(2026 - int(0, 2), int(1, 12), int(1, 28))
+  }
+  return out
+}
 
 export function buildDB(): DB {
   const year = '2026/2027'
@@ -229,13 +269,18 @@ export function buildDB(): DB {
         phone: `+359 88${int(6, 9)} ${int(100, 999)} ${int(100, 999)}`,
         email: '',
         parentIds: [],
-        status: chance(0.02) ? 'преместен' : 'активен',
+        status: chance(0.08) ? 'преместен' : 'активен',
         sen,
         senNote: sen ? pick(['Специфични обучителни трудности', 'Хиперактивност и дефицит на вниманието', 'Езиково-говорно нарушение', 'Разстройство от аутистичния спектър']) : undefined,
         ifo: sen && chance(0.35),
         cdo: chance(0.28),
         doctor: pick(DOCTORS),
         admittedAt: d(YEAR, 9, 15),
+        birthPlace: pick(BIRTH_PLACES),
+        exemptFromGrades: chance(0.04),
+        gradesBlocked: chance(0.02),
+        mandatorySubjects: chance(0.85),
+        documents: personalFile(sen),
       }
       students.push(st)
     }
@@ -410,6 +455,8 @@ export function buildDB(): DB {
         period: int(1, 7), subjectId: sid,
         reason: excused ? pick(['извинено', 'семейни причини'] as const) : pick(['неизвинено', 'закъснение'] as const),
         excused,
+        // част от отсъствията са за целия ден — броят се за всички часове
+        wholeDay: chance(0.22),
         note: excused && chance(0.5) ? pick(['Медицинска бележка №' + int(1000, 9999), 'Родителска бележка', 'Състезание']) : undefined,
         teacherId: teacher.id, createdAt: when,
       })
@@ -421,10 +468,11 @@ export function buildDB(): DB {
   let ni = 0
   activeStudents.forEach((st) => {
     const k = classes.find((c) => c.id === st.classId)!
-    const n = int(0, 3)
+    const n = int(1, 4)
     for (let i = 0; i < n; i++) {
       ni++
-      const kind = pick(['Отзив', 'Забележка', 'Похвала', 'Други'] as const)
+      const r = rnd()
+      const kind = r < 0.55 ? 'Похвала' : r < 0.85 ? 'Забележка' : 'Отзив'
       notes.push({
         id: uid('nte', ni), studentId: st.id, classId: k.id,
         text: kind === 'Похвала'
@@ -433,7 +481,11 @@ export function buildDB(): DB {
             ? pick(['Разговаря в час', 'Неподготвен урок', 'Забравени материали', 'Закъснение'])
             : pick(['Добър напредък', 'Редовно посещава занимания', 'Участва в инициатива']),
         kind,
-        badge: kind === 'Похвала' ? pick(['🌟', '🏅', '👏', '💡']) : undefined,
+        badge: kind === 'Похвала'
+          ? pick(['Активна работа в час', 'Отлично представяне', 'Помощ на съученик', 'Отличен проект'])
+          : kind === 'Забележка'
+            ? pick(['Разговор в час', 'Неподготвен урок', 'Забравени материали', 'Закъснение'])
+            : undefined,
         teacherId: pick(teachers).id,
         date: chance(0.5) ? d(YEAR, int(9, 12), int(1, 28)) : d(YEAR + 1, int(1, 6), int(1, 28)),
         visibleToParent: true,
@@ -507,6 +559,8 @@ export function buildDB(): DB {
         date: d(YEAR, int(11, 12), int(1, 28)), period: int(1, 6),
         kind: pick(['Контролна работа', 'Класна работа', 'Тест', 'Диктовка'] as const),
         topic: pick(['Събиране и изваждане на дроби', 'Анализ на литературен текст', 'Present Perfect Tense', 'Алгоритми и блок-схеми', 'Клетка — строеж и функции', 'Османско владичество', 'Промени в климата', 'Създаване на уеб страница']),
+        createdById: teacher.id,
+        createdAt: `${d(YEAR, int(9, 10), int(1, 28))} ${String(int(8, 20)).padStart(2, '0')}:${String(int(0, 59)).padStart(2, '0')}`,
       })
     }
   })
@@ -694,6 +748,8 @@ export function buildDB(): DB {
         no: i + 1, topic, hours: int(2, 6),
         month: ['Септември', 'Октомври', 'Ноември', 'Декември', 'Януари', 'Февруари', 'Март', 'Април'][i],
         taken: i < 4, date: i < 4 ? d(YEAR, 9 + i, 10) : undefined,
+        // вид на часа по образеца: НЗ — нови знания, УПР — упражнение, ТК — текущ контрол
+        kind: (['НЗ', 'НЗ', 'УПР', 'ТК', 'НЗ', 'УПР', 'УПР', 'ДЗ'] as const)[i],
       })),
     })
   })
@@ -868,12 +924,64 @@ export function buildDB(): DB {
     { id: 'sync_4', direction: 'качване', entity: 'Ученици в СФО', count: 4, date: d(YEAR, 11, 5), status: 'грешка', message: 'Невалиден ЕГН на 2 записа.' },
   ]
 
+  // ── Раздели в „Дневник" ──────────────────────────────────────────────────
+  // Въвеждаме само онова, което референтният дневник също показва запълнено:
+  // родителски срещи, санкции и бележки към преместените ученици. Останалите
+  // раздели (ВЧК, подкрепа, поправителни/приравнителни изпити) остават празни,
+  // за да се вижда празното им състояние — точно както в образеца.
+
+  const classMeetings: ClassMeeting[] = classes.map((k, i) => ({
+    id: uid('mtg', i + 1),
+    classId: k.id,
+    title: `Родителска среща в ${k.name}`,
+    from: `${d(YEAR, 10, 10)}T20:30`,
+    to: `${d(YEAR, 10, 10)}T21:30`,
+    authorId: k.homeroomTeacherId ?? admin.id,
+    createdAt: d(YEAR, 10, 9),
+  }))
+
+  const sanctionKinds = [
+    'Забележка',
+    'Преместване в друга паралелка в същото училище',
+    'Предупреждение за изключване',
+  ]
+  const sanctions: Sanction[] = []
+  let sni = 0
+  classes.forEach((k) => {
+    // санкции получават само учениците, които вече не са в паралелката
+    students.filter((s) => s.classId === k.id && s.status !== 'активен').forEach((st) => {
+      const n = int(1, 2)
+      for (let i = 0; i < n; i++) {
+        sni++
+        sanctions.push({
+          id: uid('snc', sni),
+          studentId: st.id,
+          classId: k.id,
+          kind: sanctionKinds[Math.min(sni % sanctionKinds.length, sanctionKinds.length - 1)],
+          orderNo: `РД-${String(sni + 3).padStart(3, '0')}`,
+          orderDate: d(YEAR, 10, 2),
+          from: d(YEAR, 10, 2),
+          to: d(YEAR + 1, 7, 2),
+          authorId: k.homeroomTeacherId ?? admin.id,
+        })
+      }
+    })
+  })
+
+  const classNotes: ClassNote[] = []
+  const supportPlans: SupportPlan[] = []
+  const vhkLessons: VhkLesson[] = []
+  const correctionalExams: CorrectionalExam[] = []
+  const equivalenceExams: EquivalenceExam[] = []
+
   return {
     school, users, subjects, classes, students, grades, absences, notes, schedule,
     homework, exams, messages, tests, materials, tasks, events, meetings, activities,
     themePlans, fees, rooms, competitions, portfolios, studentProfiles, attestations,
     lessonAbsences, docs: [...docs, ...delovodstvoDocs], virtualRooms, ifoDiaries,
     syncLogs, audit: [],
+    sanctions, classNotes, supportPlans, vhkLessons, classMeetings,
+    correctionalExams, equivalenceExams,
   }
 }
 

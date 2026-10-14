@@ -1,988 +1,64 @@
-import { Fragment, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
-import type { Grade, GradeType, Absence, Student, Klass, Subject } from '../lib/types'
+import { Badge, EmptyState, Icon, PageHeader, Select } from '../components/ui'
+import { GradebookTab } from './dnevnik/Gradebook'
+import { AbsencesTab } from './dnevnik/Absences'
+import { ReviewsTab } from './dnevnik/Reviews'
+import { ScheduleTab } from './dnevnik/Schedule'
+import { ThemesTab, HomeworkTab } from './dnevnik/Subjects'
 import {
-  Badge, Card, EmptyState, Field, GradePill, Icon, Input, Modal, PageHeader,
-  SearchInput, Select, Table, Tabs, Textarea, avgFmt, formatDate,
-} from '../components/ui'
+  ExamsTab, MeetingsTab, SupportTab, VhkTab, RemarksTab, SanctionsTab,
+} from './dnevnik/Registers'
+import { ResultsTab, CorrectionalTab, EquivalenceTab } from './dnevnik/Exams2'
+import { StudentsTab } from './dnevnik/Students'
 
-const DAYS = ['', 'Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък']
-const GRADE_TYPES: GradeType[] = [
-  'Текуща', 'Контролна работа', 'Класна работа', 'Устно изпитване', 'Практическа',
-  'Проект', 'Домашна работа', 'Входно ниво', 'Междинно ниво', 'Изходно ниво',
-  'Срочна', 'Годишна', 'Поправителен изпит',
+/**
+ * Модул „Дневник" — лента с 16 раздела, подредени както в референтния дневник:
+ * Оц. · Отс. · Отз. · Раз. · Тем. · Дом. · Кон. · Род. · Под. · ВЧК · Бел. ·
+ * Сан. · Рез. · Поп. · Прир. · Уч.
+ *
+ * Броячът до всеки раздел е светъл (teal), когато има данни, и жълт, когато
+ * разделът е празен — така веднага се вижда къде има въведена информация.
+ * Активният раздел се пази в адреса (`?tab=`), за да могат връзките от
+ * страничното меню да водят направо до него.
+ */
+
+interface TabDef {
+  id: string
+  short: string
+  full: string
+  icon: string
+  /** без брояч — напр. разписанието */
+  noCount?: boolean
+}
+
+const TABS: TabDef[] = [
+  { id: 'grades', short: 'Оц.', full: 'Оценки', icon: 'edit' },
+  { id: 'absences', short: 'Отс.', full: 'Отсъствия', icon: 'warn' },
+  { id: 'reviews', short: 'Отз.', full: 'Отзиви', icon: 'badge' },
+  { id: 'schedule', short: 'Раз.', full: 'Разписание', icon: 'grid', noCount: true },
+  { id: 'themes', short: 'Тем.', full: 'Теми', icon: 'list' },
+  { id: 'homework', short: 'Дом.', full: 'Домашни работи', icon: 'clipboard' },
+  { id: 'exams', short: 'Кон.', full: 'Контролни работи', icon: 'task' },
+  { id: 'meetings', short: 'Род.', full: 'Родителски срещи', icon: 'calendar' },
+  { id: 'support', short: 'Под.', full: 'Ученическа подкрепа', icon: 'heart' },
+  { id: 'vhk', short: 'ВЧК', full: 'Втори час на класа', icon: 'school' },
+  { id: 'remarks', short: 'Бел.', full: 'Бележки', icon: 'report' },
+  { id: 'sanctions', short: 'Сан.', full: 'Санкции', icon: 'zap' },
+  { id: 'results', short: 'Рез.', full: 'Резултати', icon: 'lines' },
+  { id: 'correctional', short: 'Поп.', full: 'Поправителни изпити', icon: 'wrench' },
+  { id: 'equivalence', short: 'Прир.', full: 'Приравнителни изпити', icon: 'equals' },
+  { id: 'students', short: 'Уч.', full: 'Ученици', icon: 'cap' },
 ]
-const todayISO = () => new Date().toISOString().slice(0, 10)
 
-// ── Модал: добавяне на оценки ────────────────────────────────────────────────
-function GradeModal({
-  open, onClose, students, subjectId, classId,
-}: { open: boolean; onClose: () => void; students: Student[]; subjectId: string; classId: string }) {
-  const { addGrades, user } = useApp()
-  const [type, setType] = useState<GradeType>('Текуща')
-  const [date, setDate] = useState(todayISO())
-  const [term, setTerm] = useState<1 | 2>(1)
-  const [comment, setComment] = useState('')
-  const [draft, setDraft] = useState(false)
-  const [values, setValues] = useState<Record<string, string>>({})
+/** Часовете за едно отсъствие — „цял ден" се брои за всички часове. */
+const HOURS_PER_DAY = 7
 
-  const save = () => {
-    const rows = Object.entries(values)
-      .filter(([, v]) => v.trim() !== '' && !Number.isNaN(parseFloat(v)))
-      .map(([studentId, v]) => ({
-        studentId, subjectId, classId,
-        value: parseFloat(v), type, date, term, comment: comment || undefined,
-        teacherId: user!.id, draft,
-      }))
-    if (!rows.length) return
-    addGrades(rows as Omit<Grade, 'id' | 'createdAt'>[])
-    setValues({})
-    setComment('')
-    onClose()
-  }
-
-  return (
-    <Modal
-      open={open} onClose={onClose} wide
-      title="Добавяне на оценки"
-      footer={
-        <>
-          <button onClick={onClose} className="btn-ghost">Отказ</button>
-          <button onClick={save} className="btn-primary">Запази</button>
-        </>
-      }
-    >
-      <div className="mb-4 grid gap-3 sm:grid-cols-4">
-        <Field label="Тип">
-          <Select value={type} onChange={(e) => setType(e.target.value as GradeType)}>
-            {GRADE_TYPES.map((t) => <option key={t}>{t}</option>)}
-          </Select>
-        </Field>
-        <Field label="Дата">
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </Field>
-        <Field label="Срок">
-          <Select value={term} onChange={(e) => setTerm(Number(e.target.value) as 1 | 2)}>
-            <option value={1}>Първи срок</option>
-            <option value={2}>Втори срок</option>
-          </Select>
-        </Field>
-        <Field label="Чернова">
-          <Select value={draft ? 'да' : 'не'} onChange={(e) => setDraft(e.target.value === 'да')}>
-            <option value="не">Не — видима</option>
-            <option value="да">Да — само за мен</option>
-          </Select>
-        </Field>
-      </div>
-
-      <Field label="Коментар (по избор)">
-        <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="напр. Отлично представяне" />
-      </Field>
-
-      <div className="mt-4">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-500">Оценки по ученици</p>
-          <button
-            onClick={() => {
-              const v = prompt('Оценка за целия клас (2–6):')
-              if (!v) return
-              const next: Record<string, string> = {}
-              students.forEach((s) => { next[s.id] = v })
-              setValues(next)
-            }}
-            className="text-[12px] font-semibold text-brand-700 hover:underline"
-          >
-            Задай на целия клас
-          </button>
-        </div>
-        <div className="max-h-[380px] overflow-y-auto rounded-lg border border-ink-200">
-          <table className="w-full">
-            <tbody className="divide-y divide-ink-100">
-              {students.map((s) => (
-                <tr key={s.id} className="hover:bg-ink-50/60">
-                  <td className="w-10 px-3 py-1.5 text-[12px] font-bold text-ink-400">{s.number}</td>
-                  <td className="px-3 py-1.5 text-sm text-ink-800">
-                    {s.firstName} {s.lastName}
-                    {s.sen && <Badge tone="purple" className="ml-2">СОП</Badge>}
-                  </td>
-                  <td className="w-[190px] px-3 py-1.5">
-                    <div className="flex items-center gap-1">
-                      {[2, 3, 4, 5, 6].map((g) => (
-                        <button
-                          key={g}
-                          onClick={() => setValues((p) => ({ ...p, [s.id]: String(g) }))}
-                          className={`h-7 w-7 rounded-md text-[13px] font-bold transition ${
-                            values[s.id] === String(g) ? `g${g} ring-2 ring-brand-500/40` : 'bg-ink-100 text-ink-500 hover:bg-ink-200'
-                          }`}
-                        >
-                          {g}
-                        </button>
-                      ))}
-                      <input
-                        value={values[s.id] ?? ''}
-                        onChange={(e) => setValues((p) => ({ ...p, [s.id]: e.target.value }))}
-                        placeholder="—"
-                        className="ml-1 h-7 w-12 rounded-md border border-ink-200 px-1.5 text-center text-[13px] outline-none focus:border-brand-500"
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-// ── Модал: редактиране на оценка ─────────────────────────────────────────────
-function EditGradeModal({ grade, onClose }: { grade: Grade | null; onClose: () => void }) {
-  const { updateGrade, deleteGrade, subjectName, studentName, userName } = useApp()
-  const [value, setValue] = useState(grade?.value ?? 4)
-  const [type, setType] = useState<GradeType>(grade?.type ?? 'Текуща')
-  const [date, setDate] = useState(grade?.date ?? todayISO())
-  const [comment, setComment] = useState(grade?.comment ?? '')
-  const [draft, setDraft] = useState(grade?.draft ?? false)
-
-  if (!grade) return null
-  return (
-    <Modal
-      open={!!grade} onClose={onClose} title="Оценка"
-      footer={
-        <>
-          <button
-            onClick={() => { deleteGrade(grade.id); onClose() }}
-            className="btn-danger mr-auto"
-          >
-            <Icon name="trash" size={15} /> Изтрий
-          </button>
-          <button onClick={onClose} className="btn-ghost">Отказ</button>
-          <button
-            onClick={() => {
-              updateGrade(grade.id, { value, type, date, comment: comment || undefined, draft })
-              onClose()
-            }}
-            className="btn-primary"
-          >
-            Запази
-          </button>
-        </>
-      }
-    >
-      <div className="mb-4 rounded-lg bg-ink-50 px-4 py-3">
-        <p className="text-sm font-semibold text-ink-900">{studentName(grade.studentId)}</p>
-        <p className="text-xs text-ink-500">
-          {subjectName(grade.subjectId)} · въведена от {userName(grade.teacherId)}
-        </p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Оценка">
-          <div className="flex gap-1.5">
-            {[2, 3, 4, 5, 6].map((g) => (
-              <button
-                key={g}
-                onClick={() => setValue(g)}
-                className={`h-9 flex-1 rounded-lg text-sm font-bold transition ${
-                  value === g ? `g${g} ring-2 ring-brand-500/40` : 'bg-ink-100 text-ink-500 hover:bg-ink-200'
-                }`}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-        </Field>
-        <Field label="Тип">
-          <Select value={type} onChange={(e) => setType(e.target.value as GradeType)}>
-            {GRADE_TYPES.map((t) => <option key={t}>{t}</option>)}
-          </Select>
-        </Field>
-        <Field label="Дата">
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </Field>
-        <Field label="Чернова">
-          <Select value={draft ? 'да' : 'не'} onChange={(e) => setDraft(e.target.value === 'да')}>
-            <option value="не">Не</option>
-            <option value="да">Да</option>
-          </Select>
-        </Field>
-      </div>
-      <div className="mt-3">
-        <Field label="Коментар">
-          <Textarea value={comment} onChange={(e) => setComment(e.target.value)} />
-        </Field>
-      </div>
-    </Modal>
-  )
-}
-
-// ── Таб: Оценки (класна книга) ───────────────────────────────────────────────
-/** Оценки, които не са „текущи" — срочни, годишни, изпити за ниво. */
-const NON_CURRENT: GradeType[] = [
-  'Срочна', 'Годишна', 'Входно ниво', 'Междинно ниво', 'Изходно ниво', 'Поправителен изпит',
-]
-const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null)
-const nameOf = (s: Student) =>
-  `${s.firstName} ${s.middleName ? `${s.middleName[0]}. ` : ''}${s.lastName}`
-
-function GradebookTab({
-  classId, subjectId, klass, subjects, onSelectSubject,
-}: {
-  classId: string
-  subjectId: string
-  klass: Klass
-  subjects: Subject[]
-  onSelectSubject: (id: string) => void
-}) {
-  const { db, subjectName, user, isAdmin, isStaff, deleteGrade } = useApp()
-  const [open, setOpen] = useState(false)
-  const [edit, setEdit] = useState<Grade | null>(null)
-  const [showDrafts, setShowDrafts] = useState(false)
-  const [showFilter, setShowFilter] = useState(false)
-  const [picked, setPicked] = useState<Record<string, boolean>>({})
-
-  // всички ученици на паралелката, включително преместените — те се показват в червено,
-  // както е в референтния дневник
-  const students = useMemo(
-    () => db.students.filter((s) => s.classId === classId).sort((a, b) => a.number - b.number),
-    [db.students, classId],
-  )
-  const grades = useMemo(
-    () => db.grades.filter((g) => g.classId === classId && g.subjectId === subjectId),
-    [db.grades, classId, subjectId],
-  )
-
-  /** оценките на ученик за срок и вид (текущи / срочна / годишна) */
-  const cell = (sid: string, term: 1 | 2, kind: 'cur' | 'sro' | 'god') =>
-    grades
-      .filter((g) => {
-        if (g.studentId !== sid) return false
-        if (g.draft && !showDrafts) return false
-        if (kind === 'god') return g.type === 'Годишна'
-        if (kind === 'sro') return g.type === 'Срочна' && g.term === term
-        return !NON_CURRENT.includes(g.type) && g.term === term
-      })
-      .sort((a, b) => a.date.localeCompare(b.date))
-
-  const classAvg = mean(
-    students.flatMap((s) => [...cell(s.id, 1, 'cur'), ...cell(s.id, 2, 'cur')].map((g) => g.value)),
-  )
-
-  /** брой оценки по предмет за двата срока — за левия панел.
-   *  Броят се вписванията (дата + вид), не отделните оценки на всеки ученик. */
-  const subjectCount = (sid: string) => {
-    const list = db.grades.filter(
-      (g) =>
-        g.classId === classId &&
-        g.subjectId === sid &&
-        (showDrafts || !g.draft) &&
-        !NON_CURRENT.includes(g.type),
-    )
-    const events = (term: 1 | 2) =>
-      new Set(list.filter((g) => g.term === term).map((g) => `${g.date}|${g.type}`)).size
-    return { t1: events(1), t2: events(2) }
-  }
-
-  const teacher = db.users.find((u) => u.subjectIds?.includes(subjectId) && (isAdmin || u.id === user?.id))
-    ?? db.users.find((u) => u.subjectIds?.includes(subjectId))
-  const homeroom = db.users.find((u) => u.id === klass.homeroomTeacherId)
-  const deputies = db.users.filter(
-    (u) => u.subjectIds?.includes(subjectId) && u.id !== teacher?.id && (u.roles.includes('teacher') || u.roles.includes('class_teacher')),
-  ).slice(0, 2)
-
-  const pickedIds = Object.entries(picked).filter(([, v]) => v).map(([k]) => k)
-  const removePicked = () => {
-    const doomed = grades.filter((g) => pickedIds.includes(g.studentId))
-    if (!doomed.length) return
-    if (!window.confirm(`Да се изтрият ли ${doomed.length} оценки по „${subjectName(subjectId)}" за избраните ученици?`)) return
-    doomed.forEach((g) => deleteGrade(g.id))
-    setPicked({})
-  }
-
-  const gradeCell = (list: Grade[], showAvg = true) => {
-    const av = mean(list.map((g) => g.value))
-    return (
-      <div className="flex flex-wrap items-center gap-1">
-        {list.map((g) => {
-          const tip = `${g.type} · ${formatDate(g.date)}${g.draft ? ' · чернова' : ''}`
-          const pill = <span className={g.draft ? 'opacity-50' : ''}><GradePill value={g.value} /></span>
-          // родител и ученик виждат оценките, но не могат да ги редактират
-          return isStaff ? (
-            <button key={g.id} onClick={() => setEdit(g)} title={tip}>{pill}</button>
-          ) : (
-            <span key={g.id} title={tip}>{pill}</span>
-          )
-        })}
-        {showAvg && av !== null && <span className="text-[11px] text-ink-400">({av.toFixed(2)})</span>}
-      </div>
-    )
-  }
-
-  return (
-    <>
-      {/* лента на паралелката + бърз избор на предмет */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-3.5 py-2.5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-600 text-[11px] font-bold text-white">
-            {klass.grade}{klass.letter}
-          </span>
-          <span className="truncate text-[13px] font-semibold text-ink-800">
-            {klass.name}
-            {homeroom && <> — {homeroom.firstName} {homeroom.lastName} <span className="font-normal text-ink-500">(класен)</span></>}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {subjects.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => onSelectSubject(s.id)}
-              title={s.name}
-              className={`rounded-md border px-2 py-1 text-[11px] font-bold transition ${
-                s.id === subjectId
-                  ? 'border-brand-500 bg-brand-50 text-brand-800'
-                  : 'border-ink-200 bg-white text-ink-500 hover:border-ink-300 hover:text-ink-700'
-              }`}
-            >
-              {s.short}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* действия */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        {isStaff && (
-          <>
-            <button onClick={() => setOpen(true)} className="btn bg-ok text-white hover:brightness-95">
-              <Icon name="plus" size={15} /> Добави
-            </button>
-            <button
-              onClick={removePicked}
-              disabled={!pickedIds.length}
-              className="btn bg-danger text-white hover:brightness-95"
-            >
-              <Icon name="close" size={15} /> Изтрий{pickedIds.length ? ` (${pickedIds.length})` : ''}
-            </button>
-          </>
-        )}
-        <button onClick={() => window.print()} className="btn bg-warn text-white hover:brightness-95">
-          <Icon name="print" size={15} /> Принтирай
-        </button>
-        <button onClick={() => setShowFilter((v) => !v)} className="btn-ghost ml-auto">
-          <Icon name="filter" size={15} /> Филтър
-        </button>
-      </div>
-
-      {showFilter && (
-        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3 text-[13px] text-ink-600">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={showDrafts} onChange={(e) => setShowDrafts(e.target.checked)} className="h-4 w-4 rounded" />
-            Покажи черновите
-          </label>
-          <span className="h-4 w-px bg-ink-200" />
-          <span>{students.length} ученика</span>
-          <span className="h-4 w-px bg-ink-200" />
-          <span>Среден успех на класа: <b className="text-ink-800">{avgFmt(classAvg)}</b></span>
-          {isStaff && (
-            <button
-              onClick={() => setPicked({})}
-              className="ml-auto text-[12px] font-semibold text-brand-700 hover:underline"
-            >
-              Изчисти избора
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="grid gap-3 lg:grid-cols-[250px_minmax(0,1fr)]">
-        {/* предмети */}
-        <div className="card max-h-[72vh] overflow-y-auto p-1.5">
-          {subjects.map((s) => {
-            const c = subjectCount(s.id)
-            const on = s.id === subjectId
-            return (
-              <button
-                key={s.id}
-                onClick={() => onSelectSubject(s.id)}
-                className={`flex w-full items-center gap-1.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] transition ${
-                  on ? 'bg-brand-50 font-semibold text-brand-800' : 'text-ink-700 hover:bg-ink-50'
-                }`}
-              >
-                <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                <span className="g5 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold">{c.t1}</span>
-                <span className="g6 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold">{c.t2}</span>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* класна книга */}
-        <div className="min-w-0">
-          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-[13px] font-bold text-ink-900">
-              {subjectName(subjectId)}
-              {teacher && <span className="font-normal text-ink-600"> — {teacher.firstName} {teacher.lastName}</span>}
-            </p>
-            <p className="text-[11px] text-ink-500">
-              Заместители:{' '}
-              {deputies.length
-                ? deputies.map((d) => `${d.firstName} ${d.lastName}`).join(', ')
-                : '—'}
-            </p>
-          </div>
-
-          <div className="overflow-x-auto rounded-xl border border-ink-200 bg-white">
-            <table className="w-full border-collapse">
-              <thead className="bg-ink-50">
-                <tr>
-                  <th className="th w-14" rowSpan={2}>№</th>
-                  <th className="th" rowSpan={2}>Ученик</th>
-                  <th className="th border-l border-ink-200 text-center" colSpan={2}>Първи срок</th>
-                  <th className="th border-l border-ink-200 text-center" colSpan={2}>Втори срок</th>
-                  <th className="th border-l border-ink-200 text-center" rowSpan={2}>Годишна</th>
-                </tr>
-                <tr>
-                  <th className="th border-l border-ink-200 text-center">Текущи</th>
-                  <th className="th text-center">Срочна</th>
-                  <th className="th border-l border-ink-200 text-center">Текущи</th>
-                  <th className="th text-center">Срочна</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-ink-100">
-                {students.map((s) => {
-                  const isPicked = !!picked[s.id]
-                  const left = s.status !== 'активен'
-                  return (
-                    <tr
-                      key={s.id}
-                      className={`${left ? 'bg-[#fde8e8]/70' : isPicked ? 'bg-brand-50/60' : ''} hover:bg-ink-50/60`}
-                    >
-                      <td className="td">
-                        <div className="flex items-center gap-2">
-                          {isStaff && (
-                            <input
-                              type="checkbox"
-                              checked={isPicked}
-                              onChange={(e) => setPicked((p) => ({ ...p, [s.id]: e.target.checked }))}
-                              className="h-3.5 w-3.5 rounded border-ink-300"
-                            />
-                          )}
-                          <span className="text-[12px] font-bold text-ink-400">{s.number}</span>
-                        </div>
-                      </td>
-                      <td className="td">
-                        <span className="font-medium">{nameOf(s)}</span>
-                        {s.sen && <Badge tone="purple" className="ml-1.5">СОП</Badge>}
-                        {left && <span className="ml-1.5 text-[11px] text-[#b42318]">({s.status})</span>}
-                      </td>
-                      {([1, 2] as const).map((term) => (
-                        <Fragment key={term}>
-                          <td className="td border-l border-ink-100 align-top">
-                            {gradeCell(cell(s.id, term, 'cur'))}
-                          </td>
-                          <td className="td align-top">
-                            {gradeCell(cell(s.id, term, 'sro'), false)}
-                          </td>
-                        </Fragment>
-                      ))}
-                      <td className="td border-l border-ink-100 align-top">
-                        {gradeCell(cell(s.id, 1, 'god'), false)}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {!teacher && (
-            <div className="mt-3">
-              <Badge tone="warn">Няма назначен учител по този предмет в паралелката</Badge>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {isStaff && (
-        <>
-          <GradeModal open={open} onClose={() => setOpen(false)} students={students} subjectId={subjectId} classId={classId} />
-          <EditGradeModal grade={edit} onClose={() => setEdit(null)} />
-        </>
-      )}
-    </>
-  )
-}
-
-// ── Таб: Отсъствия ───────────────────────────────────────────────────────────
-function AbsencesTab({ classId, subjectId }: { classId: string; subjectId: string }) {
-  const { db, studentsOf, setAbsenceReason, deleteAbsence, addAbsences, user, subjectName } = useApp()
-  const [open, setOpen] = useState(false)
-  const [filter, setFilter] = useState<'всички' | 'неизвинени' | 'извинени'>('всички')
-  const [q, setQ] = useState('')
-  const [form, setForm] = useState({ date: todayISO(), period: 1, reason: 'неизвинено' as Absence['reason'], note: '', selected: {} as Record<string, boolean> })
-
-  const students = studentsOf(classId)
-  const all = db.absences.filter((a) => a.classId === classId)
-  const rows = all
-    .filter((a) => (filter === 'всички' ? true : filter === 'извинени' ? a.excused : !a.excused))
-    .sort((a, b) => b.date.localeCompare(a.date))
-
-  const counts = (sid: string) => {
-    const list = all.filter((a) => a.studentId === sid)
-    return { total: list.length, unexcused: list.filter((a) => !a.excused).length }
-  }
-
-  const save = () => {
-    const chosen = Object.entries(form.selected).filter(([, v]) => v).map(([k]) => k)
-    if (!chosen.length) return
-    addAbsences(
-      chosen.map((sid) => ({
-        studentId: sid, classId, date: form.date, period: form.period, subjectId,
-        reason: form.reason, excused: form.reason === 'извинено' || form.reason === 'семейни причини',
-        note: form.note || undefined, teacherId: user!.id,
-      })),
-    )
-    setForm({ ...form, selected: {}, note: '' })
-    setOpen(false)
-  }
-
-  return (
-    <>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button onClick={() => setOpen(true)} className="btn-primary"><Icon name="plus" size={15} /> Отбележи отсъствие</button>
-        <Select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} className="w-auto">
-          <option value="всички">Всички отсъствия</option>
-          <option value="неизвинени">Само неизвинени</option>
-          <option value="извинени">Само извинени</option>
-        </Select>
-        <SearchInput value={q} onChange={setQ} placeholder="Търсене по ученик…" />
-      </div>
-
-      <div className="mb-4 grid gap-3 sm:grid-cols-4">
-        <Card className="!p-3.5"><p className="text-[11px] font-semibold uppercase text-ink-500">Общо отсъствия</p><p className="text-xl font-bold text-ink-900">{all.length}</p></Card>
-        <Card className="!p-3.5"><p className="text-[11px] font-semibold uppercase text-ink-500">Неизвинени</p><p className="text-xl font-bold text-danger">{all.filter((a) => !a.excused).length}</p></Card>
-        <Card className="!p-3.5"><p className="text-[11px] font-semibold uppercase text-ink-500">Извинени</p><p className="text-xl font-bold text-ok">{all.filter((a) => a.excused).length}</p></Card>
-        <Card className="!p-3.5"><p className="text-[11px] font-semibold uppercase text-ink-500">Средно на ученик</p><p className="text-xl font-bold text-ink-900">{(all.length / Math.max(1, students.length)).toFixed(1)}</p></Card>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
-        <Table
-          head={<><th className="th w-12">№</th><th className="th">Ученик</th><th className="th w-20">Общо</th><th className="th w-24">Неизв.</th></>}
-        >
-          {students
-            .filter((s) => `${s.firstName} ${s.lastName}`.toLowerCase().includes(q.toLowerCase()))
-            .map((s) => {
-              const c = counts(s.id)
-              return (
-                <tr key={s.id} className="hover:bg-ink-50/60">
-                  <td className="td font-bold text-ink-400">{s.number}</td>
-                  <td className="td font-medium">{s.firstName} {s.lastName}</td>
-                  <td className="td">{c.total}</td>
-                  <td className="td">
-                    {c.unexcused > 0 ? <Badge tone="danger">{c.unexcused}</Badge> : <span className="text-ink-400">0</span>}
-                  </td>
-                </tr>
-              )
-            })}
-        </Table>
-
-        <div>
-          <p className="mb-2 text-[12px] font-semibold uppercase tracking-wide text-ink-500">
-            Регистър ({rows.length})
-          </p>
-          <div className="max-h-[520px] space-y-1.5 overflow-y-auto pr-1">
-            {rows.slice(0, 120).map((a) => {
-              const s = db.students.find((x) => x.id === a.studentId)
-              return (
-                <div key={a.id} className="flex items-center gap-2.5 rounded-lg border border-ink-200 bg-white px-3 py-2">
-                  <span className="w-14 shrink-0 text-[11px] text-ink-500">{formatDate(a.date)}</span>
-                  <span className="w-9 shrink-0 text-[11px] font-semibold text-ink-400">{a.period} ч.</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-medium text-ink-800">{s?.firstName} {s?.lastName}</p>
-                    <p className="truncate text-[11px] text-ink-500">{subjectName(a.subjectId)}{a.note ? ` · ${a.note}` : ''}</p>
-                  </div>
-                  <button
-                    onClick={() => setAbsenceReason(a.id, a.excused ? 'неизвинено' : 'извинено', !a.excused)}
-                    className={`chip shrink-0 ${a.excused ? 'bg-[#e6f4ea] text-[#1f7a45]' : 'bg-[#fde8e8] text-[#b42318]'}`}
-                    title="Превключи извинено / неизвинено"
-                  >
-                    {a.excused ? 'извинено' : 'неизвинено'}
-                  </button>
-                  <button onClick={() => deleteAbsence(a.id)} className="shrink-0 text-ink-300 hover:text-danger">
-                    <Icon name="trash" size={14} />
-                  </button>
-                </div>
-              )
-            })}
-            {rows.length === 0 && <EmptyState title="Няма отсъствия" text="За избраните филтри няма записи." icon="clock" />}
-          </div>
-        </div>
-      </div>
-
-      <Modal
-        open={open} onClose={() => setOpen(false)} wide title="Отбелязване на отсъствие"
-        footer={<><button onClick={() => setOpen(false)} className="btn-ghost">Отказ</button><button onClick={save} className="btn-primary">Запази</button></>}
-      >
-        <div className="mb-4 grid gap-3 sm:grid-cols-4">
-          <Field label="Дата"><Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-          <Field label="Час №">
-            <Select value={form.period} onChange={(e) => setForm({ ...form, period: Number(e.target.value) })}>
-              {[1, 2, 3, 4, 5, 6, 7].map((p) => <option key={p} value={p}>{p} час</option>)}
-            </Select>
-          </Field>
-          <Field label="Причина">
-            <Select value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value as Absence['reason'] })}>
-              <option value="неизвинено">Неизвинено</option>
-              <option value="извинено">Извинено (медицинска бележка)</option>
-              <option value="семейни причини">Семейни причини</option>
-              <option value="закъснение">Закъснение</option>
-            </Select>
-          </Field>
-          <Field label="Бележка"><Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="№ на бележка" /></Field>
-        </div>
-
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-500">Изберете ученици</p>
-          <div className="flex gap-2 text-[12px] font-semibold">
-            <button
-              onClick={() => {
-                const allSel: Record<string, boolean> = {}
-                students.forEach((s) => { allSel[s.id] = true })
-                setForm({ ...form, selected: allSel })
-              }}
-              className="text-brand-700 hover:underline"
-            >
-              Маркирай всички
-            </button>
-            <button onClick={() => setForm({ ...form, selected: {} })} className="text-ink-500 hover:underline">Изчисти</button>
-          </div>
-        </div>
-        <div className="grid max-h-[300px] grid-cols-2 gap-1.5 overflow-y-auto rounded-lg border border-ink-200 p-2.5 sm:grid-cols-3">
-          {students.map((s) => (
-            <label key={s.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-ink-50">
-              <input
-                type="checkbox"
-                checked={!!form.selected[s.id]}
-                onChange={(e) => setForm({ ...form, selected: { ...form.selected, [s.id]: e.target.checked } })}
-                className="h-4 w-4 rounded"
-              />
-              <span className="truncate">{s.number}. {s.firstName} {s.lastName}</span>
-            </label>
-          ))}
-        </div>
-      </Modal>
-    </>
-  )
-}
-
-// ── Таб: Разписание ──────────────────────────────────────────────────────────
-function ScheduleTab({ classId }: { classId: string }) {
-  const { db, subjectShort, subjectName, className } = useApp()
-  const rows = db.schedule.filter((s) => s.classId === classId)
-  const maxPeriod = Math.max(7, ...rows.map((r) => r.period))
-
-  return (
-    <div className="overflow-x-auto rounded-xl border border-ink-200 bg-white">
-      <table className="w-full border-collapse">
-        <thead className="bg-ink-50">
-          <tr>
-            <th className="th w-16">Час</th>
-            {DAYS.slice(1).map((d) => <th key={d} className="th">{d}</th>)}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-ink-100">
-          {Array.from({ length: maxPeriod }, (_, i) => i + 1).map((p) => (
-            <tr key={p}>
-              <td className="td bg-ink-50/60 text-center font-bold text-ink-500">{p}</td>
-              {DAYS.slice(1).map((_, di) => {
-                const e = rows.find((r) => r.day === di + 1 && r.period === p)
-                return (
-                  <td key={di} className="td align-top">
-                    {e ? (
-                      <div className="rounded-lg border border-ink-200 px-2.5 py-1.5">
-                        <p className="text-[13px] font-semibold text-ink-900">{subjectShort(e.subjectId)}</p>
-                        <p className="truncate text-[11px] text-ink-500">{subjectName(e.subjectId)}</p>
-                        <p className="mt-0.5 truncate text-[11px] text-ink-400">
-                          {db.users.find((u) => u.id === e.teacherId)?.lastName}
-                          {e.roomId ? ` · ${db.rooms.find((r) => r.id === e.roomId)?.name}` : ''}
-                        </p>
-                        {e.tag && <Badge tone="purple" className="mt-1">{e.tag}</Badge>}
-                      </div>
-                    ) : (
-                      <span className="text-ink-300">—</span>
-                    )}
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-// ── Таб: Ученици ─────────────────────────────────────────────────────────────
-function StudentsTab({ classId }: { classId: string }) {
-  const { db, studentsOf, average, unexcusedCount, updateStudent, addStudent, className } = useApp()
-  const [q, setQ] = useState('')
-  const [edit, setEdit] = useState<Student | null>(null)
-  const [addOpen, setAddOpen] = useState(false)
-  const [ns, setNs] = useState({ firstName: '', lastName: '', middleName: '', number: 1, gender: 'М' as 'М' | 'Ж', birthDate: '2012-01-01' })
-
-  const students = studentsOf(classId).filter((s) =>
-    `${s.firstName} ${s.middleName} ${s.lastName}`.toLowerCase().includes(q.toLowerCase()),
-  )
-
-  return (
-    <>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <SearchInput value={q} onChange={setQ} placeholder="Търсене на ученик…" />
-        <button onClick={() => setAddOpen(true)} className="btn-primary"><Icon name="plus" size={15} /> Нов ученик</button>
-      </div>
-
-      <Table
-        head={
-          <>
-            <th className="th w-12">№</th>
-            <th className="th">Име</th>
-            <th className="th">ЕГН</th>
-            <th className="th">Родител</th>
-            <th className="th w-20">Успех</th>
-            <th className="th w-24">Неизв.</th>
-            <th className="th w-32">Статус</th>
-            <th className="th w-16"></th>
-          </>
-        }
-      >
-        {students.map((s) => {
-          const parent = db.users.find((u) => s.parentIds.includes(u.id) && u.roles.includes('parent'))
-          return (
-            <tr key={s.id} className="hover:bg-ink-50/60">
-              <td className="td font-bold text-ink-400">{s.number}</td>
-              <td className="td">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{s.firstName} {s.middleName} {s.lastName}</span>
-                  {s.sen && <Badge tone="purple">СОП</Badge>}
-                  {s.ifo && <Badge tone="brand">ИФО</Badge>}
-                  {s.cdo && <Badge tone="neutral">ЦДО</Badge>}
-                </div>
-              </td>
-              <td className="td font-mono text-[12px] text-ink-500">{s.egn}</td>
-              <td className="td text-[13px]">{parent ? `${parent.firstName} ${parent.lastName}` : <span className="text-ink-400">няма</span>}</td>
-              <td className="td font-bold">{avgFmt(average(s.id))}</td>
-              <td className="td">{unexcusedCount(s.id) > 0 ? <Badge tone="danger">{unexcusedCount(s.id)}</Badge> : '0'}</td>
-              <td className="td"><Badge tone={s.status === 'активен' ? 'ok' : 'danger'}>{s.status}</Badge></td>
-              <td className="td">
-                <button onClick={() => setEdit(s)} className="text-ink-400 hover:text-brand-700"><Icon name="edit" size={15} /></button>
-              </td>
-            </tr>
-          )
-        })}
-      </Table>
-
-      <Modal
-        open={!!edit} onClose={() => setEdit(null)} title="Профил на ученик"
-        footer={<><button onClick={() => setEdit(null)} className="btn-ghost">Затвори</button><button onClick={() => setEdit(null)} className="btn-primary">Готово</button></>}
-      >
-        {edit && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Име"><Input defaultValue={edit.firstName} onBlur={(e) => updateStudent(edit.id, { firstName: e.target.value })} /></Field>
-            <Field label="Фамилия"><Input defaultValue={edit.lastName} onBlur={(e) => updateStudent(edit.id, { lastName: e.target.value })} /></Field>
-            <Field label="Пореден номер"><Input type="number" defaultValue={edit.number} onBlur={(e) => updateStudent(edit.id, { number: Number(e.target.value) })} /></Field>
-            <Field label="Дата на раждане"><Input type="date" defaultValue={edit.birthDate} onBlur={(e) => updateStudent(edit.id, { birthDate: e.target.value })} /></Field>
-            <Field label="Телефон"><Input defaultValue={edit.phone} onBlur={(e) => updateStudent(edit.id, { phone: e.target.value })} /></Field>
-            <Field label="Личен лекар"><Input defaultValue={edit.doctor} onBlur={(e) => updateStudent(edit.id, { doctor: e.target.value })} /></Field>
-            <Field label="Статус">
-              <Select defaultValue={edit.status} onChange={(e) => updateStudent(edit.id, { status: e.target.value as Student['status'] })}>
-                <option>активен</option><option>преместен</option><option>отписан</option><option>завършил</option>
-              </Select>
-            </Field>
-            <Field label="СОП">
-              <Select defaultValue={edit.sen ? 'да' : 'не'} onChange={(e) => updateStudent(edit.id, { sen: e.target.value === 'да' })}>
-                <option value="не">Не</option><option value="да">Да</option>
-              </Select>
-            </Field>
-            <div className="sm:col-span-2">
-              <Field label="Адрес"><Input defaultValue={edit.address} onBlur={(e) => updateStudent(edit.id, { address: e.target.value })} /></Field>
-            </div>
-            {edit.senNote && (
-              <div className="sm:col-span-2">
-                <Field label="Бележка СОП"><Input defaultValue={edit.senNote} onBlur={(e) => updateStudent(edit.id, { senNote: e.target.value })} /></Field>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        open={addOpen} onClose={() => setAddOpen(false)} title="Нов ученик"
-        footer={
-          <>
-            <button onClick={() => setAddOpen(false)} className="btn-ghost">Отказ</button>
-            <button
-              onClick={() => {
-                addStudent({
-                  ...ns, egn: '', classId, address: '', phone: '', email: '',
-                  status: 'активен', sen: false, admittedAt: todayISO(),
-                } as Omit<Student, 'id' | 'parentIds'>)
-                setAddOpen(false)
-              }}
-              className="btn-primary"
-            >
-              Добави
-            </button>
-          </>
-        }
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Име"><Input value={ns.firstName} onChange={(e) => setNs({ ...ns, firstName: e.target.value })} /></Field>
-          <Field label="Презиме"><Input value={ns.middleName} onChange={(e) => setNs({ ...ns, middleName: e.target.value })} /></Field>
-          <Field label="Фамилия"><Input value={ns.lastName} onChange={(e) => setNs({ ...ns, lastName: e.target.value })} /></Field>
-          <Field label="Пореден номер"><Input type="number" value={ns.number} onChange={(e) => setNs({ ...ns, number: Number(e.target.value) })} /></Field>
-          <Field label="Пол">
-            <Select value={ns.gender} onChange={(e) => setNs({ ...ns, gender: e.target.value as 'М' | 'Ж' })}>
-              <option value="М">Момче</option><option value="Ж">Момиче</option>
-            </Select>
-          </Field>
-          <Field label="Дата на раждане"><Input type="date" value={ns.birthDate} onChange={(e) => setNs({ ...ns, birthDate: e.target.value })} /></Field>
-        </div>
-        <p className="mt-3 text-xs text-ink-400">Ученикът ще бъде добавен в {className(classId)}.</p>
-      </Modal>
-    </>
-  )
-}
-
-// ── Таб: Домашни и контролни ─────────────────────────────────────────────────
-function HomeworkTab({ classId }: { classId: string }) {
-  const { db, subjectName, subjectShort, userName } = useApp()
-  const hw = db.homework.filter((h) => h.classId === classId).sort((a, b) => b.date.localeCompare(a.date))
-  const exams = db.exams.filter((e) => e.classId === classId).sort((a, b) => a.date.localeCompare(b.date))
-
-  return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <Card pad={false}>
-        <div className="border-b border-ink-200 px-5 py-3.5"><h2 className="font-bold text-ink-900">Домашни работи</h2></div>
-        <ul className="divide-y divide-ink-100">
-          {hw.map((h) => (
-            <li key={h.id} className="px-5 py-3">
-              <div className="flex items-center gap-2">
-                <Badge tone="brand">{subjectShort(h.subjectId)}</Badge>
-                <span className="text-[11px] text-ink-400">{formatDate(h.date)}</span>
-                <span className="ml-auto text-[11px] text-ink-500">{userName(h.teacherId)}</span>
-              </div>
-              <p className="mt-1.5 text-[13px] leading-snug text-ink-700">{h.text}</p>
-            </li>
-          ))}
-          {hw.length === 0 && <li className="p-5"><EmptyState title="Няма домашни работи" icon="task" /></li>}
-        </ul>
-      </Card>
-
-      <Card pad={false}>
-        <div className="border-b border-ink-200 px-5 py-3.5"><h2 className="font-bold text-ink-900">График на контролните и класните работи</h2></div>
-        <ul className="divide-y divide-ink-100">
-          {exams.map((e) => (
-            <li key={e.id} className="flex items-center gap-3 px-5 py-3">
-              <span className="grid h-10 w-12 shrink-0 place-items-center rounded-lg bg-[#fdf0e3] text-[11px] font-bold leading-tight text-[#b25e09]">
-                {formatDate(e.date).slice(0, 5)}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-semibold text-ink-800">{subjectName(e.subjectId)}</p>
-                <p className="truncate text-[11px] text-ink-500">{e.topic} · {e.period} час · {userName(e.teacherId)}</p>
-              </div>
-              <Badge tone="warn">{e.kind}</Badge>
-            </li>
-          ))}
-          {exams.length === 0 && <li className="p-5"><EmptyState title="Няма насрочени работи" icon="calendar" /></li>}
-        </ul>
-      </Card>
-    </div>
-  )
-}
-
-// ── Таб: Отзиви ──────────────────────────────────────────────────────────────
-function NotesTab({ classId }: { classId: string }) {
-  const { db, studentsOf, addNote, deleteNote, user } = useApp()
-  const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ studentId: '', kind: 'Отзив' as const, text: '', badge: '' })
-
-  const students = studentsOf(classId)
-  const notes = db.notes.filter((n) => n.classId === classId).sort((a, b) => b.date.localeCompare(a.date))
-
-  return (
-    <>
-      <div className="mb-3">
-        <button onClick={() => setOpen(true)} className="btn-primary"><Icon name="plus" size={15} /> Нов отзив</button>
-      </div>
-
-      <Table head={<><th className="th">Ученик</th><th className="th">Текст</th><th className="th w-32">Вид</th><th className="th w-28">Дата</th><th className="th w-12"></th></>}>
-        {notes.map((n) => {
-          const s = db.students.find((x) => x.id === n.studentId)
-          return (
-            <tr key={n.id} className="hover:bg-ink-50/60">
-              <td className="td font-medium">{s?.firstName} {s?.lastName}</td>
-              <td className="td">{n.badge && <span className="mr-1.5">{n.badge}</span>}{n.text}</td>
-              <td className="td"><Badge tone={n.kind === 'Забележка' ? 'danger' : n.kind === 'Похвала' ? 'ok' : 'neutral'}>{n.kind}</Badge></td>
-              <td className="td text-[12px] text-ink-500">{formatDate(n.date)}</td>
-              <td className="td"><button onClick={() => deleteNote(n.id)} className="text-ink-300 hover:text-danger"><Icon name="trash" size={14} /></button></td>
-            </tr>
-          )
-        })}
-      </Table>
-      {notes.length === 0 && <EmptyState title="Няма отзиви" text="Все още не са добавени отзиви за тази паралелка." icon="spark" />}
-
-      <Modal
-        open={open} onClose={() => setOpen(false)} title="Нов отзив"
-        footer={
-          <>
-            <button onClick={() => setOpen(false)} className="btn-ghost">Отказ</button>
-            <button
-              onClick={() => {
-                if (!form.studentId || !form.text) return
-                addNote({ ...form, classId, teacherId: user!.id, date: todayISO(), visibleToParent: true })
-                setForm({ studentId: '', kind: 'Отзив', text: '', badge: '' })
-                setOpen(false)
-              }}
-              className="btn-primary"
-            >
-              Запази
-            </button>
-          </>
-        }
-      >
-        <div className="grid gap-3">
-          <Field label="Ученик">
-            <Select value={form.studentId} onChange={(e) => setForm({ ...form, studentId: e.target.value })}>
-              <option value="">— изберете —</option>
-              {students.map((s) => <option key={s.id} value={s.id}>{s.number}. {s.firstName} {s.lastName}</option>)}
-            </Select>
-          </Field>
-          <Field label="Вид">
-            <Select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as typeof form.kind })}>
-              <option>Отзив</option><option>Похвала</option><option>Забележка</option><option>Други</option>
-            </Select>
-          </Field>
-          <Field label="Значка (по избор)" hint="напр. 🌟 🏅 👏">
-            <Input value={form.badge} onChange={(e) => setForm({ ...form, badge: e.target.value })} maxLength={4} />
-          </Field>
-          <Field label="Текст">
-            <Textarea value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} />
-          </Field>
-        </div>
-      </Modal>
-    </>
-  )
-}
-
-// ── Основен компонент ────────────────────────────────────────────────────────
 export default function Dnevnik() {
-  const { db, myClasses, mySubjects, isAdmin, user, className } = useApp()
-
-  // Състоянието живее в адреса, за да могат връзките от страничното меню
-  // да водят направо до паралелка/разписание: /dnevnik?tab=schedule&class=cls_3
+  const { db, myClasses, user } = useApp()
   const [params, setParams] = useSearchParams()
+
   const setView = (next: { tab?: string; klass?: string; subject?: string }) => {
     const p = new URLSearchParams(params)
     if (next.tab !== undefined) { if (next.tab) p.set('tab', next.tab); else p.delete('tab') }
@@ -1003,54 +79,108 @@ export default function Dnevnik() {
   )
   const activeSubject = subjectId || classSubjects[0]?.id || ''
 
+  const [showEmpty, setShowEmpty] = useState(true)
+
+  /** Броячите в лентата с раздели. */
+  const counts = useMemo<Partial<Record<string, number>>>(() => {
+    if (!klass) return {}
+    const inClass = <T extends { classId: string }>(rows: T[]) => rows.filter((r) => r.classId === classId)
+    const themeRows = inClass(db.themePlans).flatMap((p) => p.rows).filter((r) => r.taken)
+    return {
+      grades: inClass(db.grades).filter((g) => !g.draft).length,
+      absences: inClass(db.absences).reduce((s, a) => s + (a.wholeDay ? HOURS_PER_DAY : 1), 0),
+      reviews: inClass(db.notes).filter((n) => n.kind === 'Похвала' || n.kind === 'Забележка').length,
+      themes: themeRows.length,
+      homework: inClass(db.homework).length,
+      exams: inClass(db.exams).length,
+      meetings: inClass(db.classMeetings).length,
+      support: inClass(db.supportPlans).length,
+      vhk: inClass(db.vhkLessons).length,
+      remarks: inClass(db.classNotes).length,
+      sanctions: inClass(db.sanctions).length,
+      results: inClass(db.correctionalExams).length,
+      correctional: inClass(db.correctionalExams).length,
+      equivalence: inClass(db.equivalenceExams).length,
+      students: klass.studentIds.length,
+    }
+  }, [db, classId, klass])
+
   if (!myClasses.length) {
     return <EmptyState title="Няма достъпни паралелки" text="За вашия профил не са назначени паралелки." icon="grid" />
   }
 
   const isFamily = user?.roles.includes('parent') || user?.roles.includes('student')
+  const active = TABS.find((t) => t.id === tab) ?? TABS[0]
+  const visibleTabs = showEmpty ? TABS : TABS.filter((t) => t.noCount || (counts[t.id] ?? 0) > 0)
 
   return (
     <>
       <PageHeader
         title="Дневник"
-        subtitle="Оценки, отсъствия, разписание, домашни работи и отзиви по паралелки."
+        subtitle="Оценки, отсъствия, отзиви, разписание, теми, домашни, контролни, санкции и изпити по паралелки."
         icon="book"
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={classId} onChange={(e) => setView({ klass: e.target.value, subject: '' })} className="w-auto min-w-[130px]">
-              {myClasses.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}{c.profile ? ` — ${c.profile}` : ''}</option>
-              ))}
-            </Select>
-          </div>
+          <Select value={classId} onChange={(e) => setView({ klass: e.target.value, subject: '' })} className="w-auto min-w-[150px]">
+            {myClasses.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}{c.profile ? ` — ${c.profile}` : ''}</option>
+            ))}
+          </Select>
         }
       />
 
       {klass && (
         <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-ink-500">
-          <Badge tone="brand">{className(klass.id)}</Badge>
+          <Badge tone="brand">{klass.name}</Badge>
           <span>{klass.studentIds.length} ученика</span>
           <span className="h-4 w-px bg-ink-200" />
-          <span>Класен ръководител: <b className="text-ink-700">{db.users.find((u) => u.id === klass.homeroomTeacherId)?.firstName} {db.users.find((u) => u.id === klass.homeroomTeacherId)?.lastName}</b></span>
+          <span>
+            Класен ръководител:{' '}
+            <b className="text-ink-700">
+              {db.users.find((u) => u.id === klass.homeroomTeacherId)?.firstName}{' '}
+              {db.users.find((u) => u.id === klass.homeroomTeacherId)?.lastName}
+            </b>
+          </span>
           {klass.profile && <><span className="h-4 w-px bg-ink-200" /><span>Профил: <b className="text-ink-700">{klass.profile}</b></span></>}
           <span className="h-4 w-px bg-ink-200" />
           <span>Смяна: <b className="text-ink-700">{klass.shift}</b></span>
         </div>
       )}
 
-      <Tabs
-        tabs={[
-          { id: 'grades', label: 'Оценки' },
-          { id: 'absences', label: 'Отсъствия' },
-          { id: 'schedule', label: 'Разписание' },
-          { id: 'homework', label: 'Домашни и контролни' },
-          { id: 'notes', label: 'Отзиви' },
-          { id: 'students', label: 'Ученици', count: klass?.studentIds.length },
-        ]}
-        active={tab}
-        onChange={(t) => setView({ tab: t })}
-      />
+      {/* ── Лента с раздели ── */}
+      <div className="mb-0 flex items-stretch overflow-x-auto border-b border-[var(--dn-line)] bg-white">
+        {visibleTabs.map((t) => {
+          const n = counts[t.id]
+          const on = active.id === t.id
+          return (
+            <button
+              key={t.id}
+              onClick={() => setView({ tab: t.id })}
+              title={t.full}
+              className={`dt ${on ? 'dt-on' : ''}`}
+            >
+              <Icon name={t.icon} size={15} strokeWidth={2} />
+              <span>{t.short}</span>
+              {!t.noCount && n !== undefined && (
+                <span className={`dt-c ${n > 0 ? '' : 'dt-c0'}`}>{n}</span>
+              )}
+            </button>
+          )
+        })}
+        <button
+          onClick={() => setShowEmpty((v) => !v)}
+          title={showEmpty ? 'Скрий празните раздели' : 'Покажи всички раздели'}
+          className="ml-auto inline-flex shrink-0 items-center gap-1.5 px-3 text-[11.5px] font-semibold text-ink-500 hover:text-ink-700"
+        >
+          <Icon name={showEmpty ? 'eye' : 'filter'} size={13} strokeWidth={2.2} />
+          {showEmpty ? 'Всички раздели' : 'Само с данни'}
+        </button>
+      </div>
 
+      <div className="mb-4 border-b border-[var(--dn-line)] bg-white px-0.5 py-2 text-[11.5px] text-ink-500">
+        Раздел: <b className="text-ink-700">{active.full}</b>
+      </div>
+
+      {/* ── Съдържание ── */}
       {tab === 'grades' && (
         klass && activeSubject ? (
           <GradebookTab
@@ -1065,10 +195,20 @@ export default function Dnevnik() {
         )
       )}
 
-      {tab === 'absences' && <AbsencesTab classId={classId} subjectId={activeSubject} />}
+      {tab === 'absences' && <AbsencesTab classId={classId} />}
+      {tab === 'reviews' && <ReviewsTab classId={classId} />}
       {tab === 'schedule' && <ScheduleTab classId={classId} />}
+      {tab === 'themes' && <ThemesTab classId={classId} />}
       {tab === 'homework' && <HomeworkTab classId={classId} />}
-      {tab === 'notes' && <NotesTab classId={classId} />}
+      {tab === 'exams' && <ExamsTab classId={classId} />}
+      {tab === 'meetings' && <MeetingsTab classId={classId} />}
+      {tab === 'support' && <SupportTab classId={classId} />}
+      {tab === 'vhk' && <VhkTab classId={classId} />}
+      {tab === 'remarks' && <RemarksTab classId={classId} />}
+      {tab === 'sanctions' && <SanctionsTab classId={classId} />}
+      {tab === 'results' && <ResultsTab classId={classId} />}
+      {tab === 'correctional' && <CorrectionalTab classId={classId} />}
+      {tab === 'equivalence' && <EquivalenceTab classId={classId} />}
       {tab === 'students' && <StudentsTab classId={classId} />}
 
       {isFamily && (

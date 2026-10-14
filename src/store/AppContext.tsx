@@ -1,7 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   DB, User, RoleId, Grade, Absence, Message, Task, Material, EventItem,
-  Test, Note, MeetingSlot, Fee, Student, Klass, Subject, AuditEntry,
+  Test, Note, MeetingSlot, Fee, Student, Klass, Subject, AuditEntry, Exam,
+  Sanction, ClassNote, SupportPlan, VhkLesson, ClassMeeting,
+  CorrectionalExam, EquivalenceExam,
 } from '../lib/types'
 import { storage, type StorageMode } from '../lib/storage'
 import { MODULES, type ModuleDef } from '../lib/modules'
@@ -53,8 +55,12 @@ interface Ctx {
   addAbsences: (a: Omit<Absence, 'id' | 'createdAt'>[]) => void
   setAbsenceReason: (id: string, reason: Absence['reason'], excused: boolean) => void
   deleteAbsence: (id: string) => void
+  /** групово уважаване — действието „Уважи" от лентата на раздел Отсъствия */
+  excuseAbsences: (ids: string[], reason: Absence['reason'], note?: string) => void
   addNote: (n: Omit<Note, 'id'>) => void
   deleteNote: (id: string) => void
+  addExam: (e: Omit<Exam, 'id'>) => void
+  deleteExam: (id: string) => void
   sendMessage: (m: Omit<Message, 'id' | 'date' | 'readBy' | 'archived' | 'folder'>) => void
   markRead: (id: string) => void
   archiveMessage: (id: string, archived: boolean) => void
@@ -75,6 +81,27 @@ interface Ctx {
   updateUser: (id: string, patch: Partial<User>) => void
   updateFee: (id: string, patch: Partial<Fee>) => void
   log: (action: string, target: string) => void
+
+  // ── раздели в модул „Дневник" ────────────────────────────────────────────
+  addSanctions: (s: Omit<Sanction, 'id'>[]) => void
+  deleteSanction: (id: string) => void
+  addClassNote: (n: Omit<ClassNote, 'id' | 'createdAt'>) => void
+  updateClassNote: (id: string, patch: Partial<ClassNote>) => void
+  deleteClassNote: (id: string) => void
+  addSupportPlan: (s: Omit<SupportPlan, 'id'>) => void
+  deleteSupportPlan: (id: string) => void
+  addVhkLesson: (v: Omit<VhkLesson, 'id'>) => void
+  deleteVhkLesson: (id: string) => void
+  addClassMeeting: (m: Omit<ClassMeeting, 'id' | 'createdAt' | 'authorId'>) => void
+  deleteClassMeeting: (id: string) => void
+  /** поправителен изпит — създава се при първо въведена оценка */
+  setCorrectionalExam: (
+    classId: string, studentId: string, subjectId: string, patch: Partial<CorrectionalExam>,
+  ) => void
+  /** приравнителен изпит — `grade === null` изтрива записа */
+  setEquivalenceExam: (
+    classId: string, studentId: string, subjectId: string, year: string, grade: number | null,
+  ) => void
 }
 
 const AppCtx = createContext<Ctx | null>(null)
@@ -322,9 +349,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (i >= 0) d.absences[i] = { ...d.absences[i], reason, excused }
         }),
       deleteAbsence: (id) => update((d) => { d.absences = d.absences.filter((a) => a.id !== id) }),
+      excuseAbsences: (ids, reason, note) =>
+        update((d) => {
+          const set = new Set(ids)
+          d.absences = d.absences.map((a) =>
+            set.has(a.id)
+              ? {
+                  ...a,
+                  reason,
+                  excused: reason !== 'неизвинено' && reason !== 'закъснение',
+                  excuseReason: reason === 'извинено' ? 'Извинено' : reason === 'семейни причини' ? 'Семейни причини' : a.excuseReason,
+                  note: note ?? a.note,
+                }
+              : a,
+          )
+        }),
 
       addNote: (n) => update((d) => { d.notes.unshift({ ...n, id: `nte_${Date.now()}` }) }),
       deleteNote: (id) => update((d) => { d.notes = d.notes.filter((n) => n.id !== id) }),
+      addExam: (e) => update((d) => { d.exams.unshift({ ...e, id: `exm_${Date.now()}` }) }),
+      deleteExam: (id) => update((d) => { d.exams = d.exams.filter((e) => e.id !== id) }),
 
       sendMessage: (m) =>
         update((d) => {
@@ -432,6 +476,79 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         }),
       log,
+
+      // ── раздели в модул „Дневник" ──────────────────────────────────────────
+      addSanctions: (items) =>
+        update((d) => {
+          items.forEach((s, i) =>
+            d.sanctions.unshift({ ...s, id: `snc_${Date.now()}_${i}` }),
+          )
+        }),
+      deleteSanction: (id) => update((d) => { d.sanctions = d.sanctions.filter((s) => s.id !== id) }),
+
+      addClassNote: (n) =>
+        update((d) => {
+          d.classNotes.unshift({
+            ...n,
+            id: `cbn_${Date.now()}`,
+            createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+          })
+        }),
+      updateClassNote: (id, patch) =>
+        update((d) => {
+          const i = d.classNotes.findIndex((n) => n.id === id)
+          if (i >= 0) d.classNotes[i] = { ...d.classNotes[i], ...patch, editedById: user?.id }
+        }),
+      deleteClassNote: (id) => update((d) => { d.classNotes = d.classNotes.filter((n) => n.id !== id) }),
+
+      addSupportPlan: (s) =>
+        update((d) => { d.supportPlans.unshift({ ...s, id: `sup_${Date.now()}` }) }),
+      deleteSupportPlan: (id) =>
+        update((d) => { d.supportPlans = d.supportPlans.filter((s) => s.id !== id) }),
+
+      addVhkLesson: (v) =>
+        update((d) => { d.vhkLessons.unshift({ ...v, id: `vhk_${Date.now()}` }) }),
+      deleteVhkLesson: (id) =>
+        update((d) => { d.vhkLessons = d.vhkLessons.filter((v) => v.id !== id) }),
+
+      addClassMeeting: (m) =>
+        update((d) => {
+          d.classMeetings.unshift({
+            ...m,
+            id: `mtg_${Date.now()}`,
+            authorId: user?.id ?? '',
+            createdAt: new Date().toISOString().slice(0, 10),
+          })
+        }),
+      deleteClassMeeting: (id) =>
+        update((d) => { d.classMeetings = d.classMeetings.filter((m) => m.id !== id) }),
+
+      setCorrectionalExam: (classId, studentId, subjectId, patch) =>
+        update((d) => {
+          const i = d.correctionalExams.findIndex(
+            (c) => c.studentId === studentId && c.subjectId === subjectId,
+          )
+          if (i >= 0) {
+            d.correctionalExams[i] = { ...d.correctionalExams[i], ...patch }
+            const row = d.correctionalExams[i]
+            if (!row.session1 && !row.session2 && !row.sessionExtra)
+              d.correctionalExams.splice(i, 1)
+          } else {
+            d.correctionalExams.push({ id: `cor_${Date.now()}`, classId, studentId, subjectId, ...patch })
+          }
+        }),
+      setEquivalenceExam: (classId, studentId, subjectId, year, grade) =>
+        update((d) => {
+          const i = d.equivalenceExams.findIndex(
+            (e) => e.studentId === studentId && e.subjectId === subjectId && e.year === year,
+          )
+          if (grade === null) {
+            if (i >= 0) d.equivalenceExams.splice(i, 1)
+            return
+          }
+          if (i >= 0) d.equivalenceExams[i] = { ...d.equivalenceExams[i], grade }
+          else d.equivalenceExams.push({ id: `eqv_${Date.now()}`, classId, studentId, subjectId, year, grade })
+        }),
     }
   }, [db, user, mode, warning, login, loginAs, logout, register, resetDemo, update, log])
 

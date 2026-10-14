@@ -1,0 +1,514 @@
+import { Fragment, useMemo, useState } from 'react'
+import { useApp } from '../../store/AppContext'
+import type { Grade, GradeType, Student, Klass, Subject } from '../../lib/types'
+import {
+  Badge, Field, GradePill, Icon, Input, Modal, Select, Textarea, avgFmt, formatDate,
+} from '../../components/ui'
+
+
+const GRADE_TYPES: GradeType[] = [
+  'Текуща', 'Контролна работа', 'Класна работа', 'Устно изпитване', 'Практическа',
+  'Проект', 'Домашна работа', 'Входно ниво', 'Междинно ниво', 'Изходно ниво',
+  'Срочна', 'Годишна', 'Поправителен изпит',
+]
+const todayISO = () => new Date().toISOString().slice(0, 10)
+
+// ── Модал: добавяне на оценки ────────────────────────────────────────────────
+function GradeModal({
+  open, onClose, students, subjectId, classId,
+}: { open: boolean; onClose: () => void; students: Student[]; subjectId: string; classId: string }) {
+  const { addGrades, user } = useApp()
+  const [type, setType] = useState<GradeType>('Текуща')
+  const [date, setDate] = useState(todayISO())
+  const [term, setTerm] = useState<1 | 2>(1)
+  const [comment, setComment] = useState('')
+  const [draft, setDraft] = useState(false)
+  const [values, setValues] = useState<Record<string, string>>({})
+
+  const save = () => {
+    const rows = Object.entries(values)
+      .filter(([, v]) => v.trim() !== '' && !Number.isNaN(parseFloat(v)))
+      .map(([studentId, v]) => ({
+        studentId, subjectId, classId,
+        value: parseFloat(v), type, date, term, comment: comment || undefined,
+        teacherId: user!.id, draft,
+      }))
+    if (!rows.length) return
+    addGrades(rows as Omit<Grade, 'id' | 'createdAt'>[])
+    setValues({})
+    setComment('')
+    onClose()
+  }
+
+  return (
+    <Modal
+      open={open} onClose={onClose} wide
+      title="Добавяне на оценки"
+      footer={
+        <>
+          <button onClick={onClose} className="btn-ghost">Отказ</button>
+          <button onClick={save} className="btn-primary">Запази</button>
+        </>
+      }
+    >
+      <div className="mb-4 grid gap-3 sm:grid-cols-4">
+        <Field label="Тип">
+          <Select value={type} onChange={(e) => setType(e.target.value as GradeType)}>
+            {GRADE_TYPES.map((t) => <option key={t}>{t}</option>)}
+          </Select>
+        </Field>
+        <Field label="Дата">
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label="Срок">
+          <Select value={term} onChange={(e) => setTerm(Number(e.target.value) as 1 | 2)}>
+            <option value={1}>Първи срок</option>
+            <option value={2}>Втори срок</option>
+          </Select>
+        </Field>
+        <Field label="Чернова">
+          <Select value={draft ? 'да' : 'не'} onChange={(e) => setDraft(e.target.value === 'да')}>
+            <option value="не">Не — видима</option>
+            <option value="да">Да — само за мен</option>
+          </Select>
+        </Field>
+      </div>
+
+      <Field label="Коментар (по избор)">
+        <Input value={comment} onChange={(e) => setComment(e.target.value)} placeholder="напр. Отлично представяне" />
+      </Field>
+
+      <div className="mt-4">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-[12px] font-semibold uppercase tracking-wide text-ink-500">Оценки по ученици</p>
+          <button
+            onClick={() => {
+              const v = prompt('Оценка за целия клас (2–6):')
+              if (!v) return
+              const next: Record<string, string> = {}
+              students.forEach((s) => { next[s.id] = v })
+              setValues(next)
+            }}
+            className="text-[12px] font-semibold text-brand-700 hover:underline"
+          >
+            Задай на целия клас
+          </button>
+        </div>
+        <div className="max-h-[380px] overflow-y-auto rounded-lg border border-ink-200">
+          <table className="w-full">
+            <tbody className="divide-y divide-ink-100">
+              {students.map((s) => (
+                <tr key={s.id} className="hover:bg-ink-50/60">
+                  <td className="w-10 px-3 py-1.5 text-[12px] font-bold text-ink-400">{s.number}</td>
+                  <td className="px-3 py-1.5 text-sm text-ink-800">
+                    {s.firstName} {s.lastName}
+                    {s.sen && <Badge tone="purple" className="ml-2">СОП</Badge>}
+                  </td>
+                  <td className="w-[190px] px-3 py-1.5">
+                    <div className="flex items-center gap-1">
+                      {[2, 3, 4, 5, 6].map((g) => (
+                        <button
+                          key={g}
+                          onClick={() => setValues((p) => ({ ...p, [s.id]: String(g) }))}
+                          className={`h-7 w-7 rounded-md text-[13px] font-bold transition ${
+                            values[s.id] === String(g) ? `g${g} ring-2 ring-brand-500/40` : 'bg-ink-100 text-ink-500 hover:bg-ink-200'
+                          }`}
+                        >
+                          {g}
+                        </button>
+                      ))}
+                      <input
+                        value={values[s.id] ?? ''}
+                        onChange={(e) => setValues((p) => ({ ...p, [s.id]: e.target.value }))}
+                        placeholder="—"
+                        className="ml-1 h-7 w-12 rounded-md border border-ink-200 px-1.5 text-center text-[13px] outline-none focus:border-brand-500"
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Модал: редактиране на оценка ─────────────────────────────────────────────
+function EditGradeModal({ grade, onClose }: { grade: Grade | null; onClose: () => void }) {
+  const { updateGrade, deleteGrade, subjectName, studentName, userName } = useApp()
+  const [value, setValue] = useState(grade?.value ?? 4)
+  const [type, setType] = useState<GradeType>(grade?.type ?? 'Текуща')
+  const [date, setDate] = useState(grade?.date ?? todayISO())
+  const [comment, setComment] = useState(grade?.comment ?? '')
+  const [draft, setDraft] = useState(grade?.draft ?? false)
+
+  if (!grade) return null
+  return (
+    <Modal
+      open={!!grade} onClose={onClose} title="Оценка"
+      footer={
+        <>
+          <button
+            onClick={() => { deleteGrade(grade.id); onClose() }}
+            className="btn-danger mr-auto"
+          >
+            <Icon name="trash" size={15} /> Изтрий
+          </button>
+          <button onClick={onClose} className="btn-ghost">Отказ</button>
+          <button
+            onClick={() => {
+              updateGrade(grade.id, { value, type, date, comment: comment || undefined, draft })
+              onClose()
+            }}
+            className="btn-primary"
+          >
+            Запази
+          </button>
+        </>
+      }
+    >
+      <div className="mb-4 rounded-lg bg-ink-50 px-4 py-3">
+        <p className="text-sm font-semibold text-ink-900">{studentName(grade.studentId)}</p>
+        <p className="text-xs text-ink-500">
+          {subjectName(grade.subjectId)} · въведена от {userName(grade.teacherId)}
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Оценка">
+          <div className="flex gap-1.5">
+            {[2, 3, 4, 5, 6].map((g) => (
+              <button
+                key={g}
+                onClick={() => setValue(g)}
+                className={`h-9 flex-1 rounded-lg text-sm font-bold transition ${
+                  value === g ? `g${g} ring-2 ring-brand-500/40` : 'bg-ink-100 text-ink-500 hover:bg-ink-200'
+                }`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Тип">
+          <Select value={type} onChange={(e) => setType(e.target.value as GradeType)}>
+            {GRADE_TYPES.map((t) => <option key={t}>{t}</option>)}
+          </Select>
+        </Field>
+        <Field label="Дата">
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <Field label="Чернова">
+          <Select value={draft ? 'да' : 'не'} onChange={(e) => setDraft(e.target.value === 'да')}>
+            <option value="не">Не</option>
+            <option value="да">Да</option>
+          </Select>
+        </Field>
+      </div>
+      <div className="mt-3">
+        <Field label="Коментар">
+          <Textarea value={comment} onChange={(e) => setComment(e.target.value)} />
+        </Field>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Таб: Оценки (класна книга) ───────────────────────────────────────────────
+/** Оценки, които не са „текущи" — срочни, годишни, изпити за ниво. */
+const NON_CURRENT: GradeType[] = [
+  'Срочна', 'Годишна', 'Входно ниво', 'Междинно ниво', 'Изходно ниво', 'Поправителен изпит',
+]
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null)
+const nameOf = (s: Student) =>
+  `${s.firstName} ${s.middleName ? `${s.middleName[0]}. ` : ''}${s.lastName}`
+
+export function GradebookTab({
+  classId, subjectId, klass, subjects, onSelectSubject,
+}: {
+  classId: string
+  subjectId: string
+  klass: Klass
+  subjects: Subject[]
+  onSelectSubject: (id: string) => void
+}) {
+  const { db, subjectName, user, isAdmin, isStaff, deleteGrade } = useApp()
+  const [open, setOpen] = useState(false)
+  const [edit, setEdit] = useState<Grade | null>(null)
+  const [showDrafts, setShowDrafts] = useState(false)
+  const [showFilter, setShowFilter] = useState(false)
+  const [picked, setPicked] = useState<Record<string, boolean>>({})
+
+  // всички ученици на паралелката, включително преместените — те се показват в червено,
+  // както е в референтния дневник
+  const students = useMemo(
+    () => db.students.filter((s) => s.classId === classId).sort((a, b) => a.number - b.number),
+    [db.students, classId],
+  )
+  const grades = useMemo(
+    () => db.grades.filter((g) => g.classId === classId && g.subjectId === subjectId),
+    [db.grades, classId, subjectId],
+  )
+
+  /** оценките на ученик за срок и вид (текущи / срочна / годишна) */
+  const cell = (sid: string, term: 1 | 2, kind: 'cur' | 'sro' | 'god') =>
+    grades
+      .filter((g) => {
+        if (g.studentId !== sid) return false
+        if (g.draft && !showDrafts) return false
+        if (kind === 'god') return g.type === 'Годишна'
+        if (kind === 'sro') return g.type === 'Срочна' && g.term === term
+        return !NON_CURRENT.includes(g.type) && g.term === term
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))
+
+  const classAvg = mean(
+    students.flatMap((s) => [...cell(s.id, 1, 'cur'), ...cell(s.id, 2, 'cur')].map((g) => g.value)),
+  )
+
+  /** брой оценки по предмет за двата срока — за левия панел.
+   *  Броят се вписванията (дата + вид), не отделните оценки на всеки ученик. */
+  const subjectCount = (sid: string) => {
+    const list = db.grades.filter(
+      (g) =>
+        g.classId === classId &&
+        g.subjectId === sid &&
+        (showDrafts || !g.draft) &&
+        !NON_CURRENT.includes(g.type),
+    )
+    const events = (term: 1 | 2) =>
+      new Set(list.filter((g) => g.term === term).map((g) => `${g.date}|${g.type}`)).size
+    return { t1: events(1), t2: events(2) }
+  }
+
+  const teacher = db.users.find((u) => u.subjectIds?.includes(subjectId) && (isAdmin || u.id === user?.id))
+    ?? db.users.find((u) => u.subjectIds?.includes(subjectId))
+  const homeroom = db.users.find((u) => u.id === klass.homeroomTeacherId)
+  const deputies = db.users.filter(
+    (u) => u.subjectIds?.includes(subjectId) && u.id !== teacher?.id && (u.roles.includes('teacher') || u.roles.includes('class_teacher')),
+  ).slice(0, 2)
+
+  const pickedIds = Object.entries(picked).filter(([, v]) => v).map(([k]) => k)
+  const removePicked = () => {
+    const doomed = grades.filter((g) => pickedIds.includes(g.studentId))
+    if (!doomed.length) return
+    if (!window.confirm(`Да се изтрият ли ${doomed.length} оценки по „${subjectName(subjectId)}" за избраните ученици?`)) return
+    doomed.forEach((g) => deleteGrade(g.id))
+    setPicked({})
+  }
+
+  const gradeCell = (list: Grade[], showAvg = true) => {
+    const av = mean(list.map((g) => g.value))
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        {list.map((g) => {
+          const tip = `${g.type} · ${formatDate(g.date)}${g.draft ? ' · чернова' : ''}`
+          const pill = <span className={g.draft ? 'opacity-50' : ''}><GradePill value={g.value} /></span>
+          // родител и ученик виждат оценките, но не могат да ги редактират
+          return isStaff ? (
+            <button key={g.id} onClick={() => setEdit(g)} title={tip}>{pill}</button>
+          ) : (
+            <span key={g.id} title={tip}>{pill}</span>
+          )
+        })}
+        {showAvg && av !== null && <span className="text-[11px] text-ink-400">({av.toFixed(2)})</span>}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {/* лента на паралелката + бърз избор на предмет */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-3.5 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-600 text-[11px] font-bold text-white">
+            {klass.grade}{klass.letter}
+          </span>
+          <span className="truncate text-[13px] font-semibold text-ink-800">
+            {klass.name}
+            {homeroom && <> — {homeroom.firstName} {homeroom.lastName} <span className="font-normal text-ink-500">(класен)</span></>}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {subjects.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onSelectSubject(s.id)}
+              title={s.name}
+              className={`rounded-md border px-2 py-1 text-[11px] font-bold transition ${
+                s.id === subjectId
+                  ? 'border-brand-500 bg-brand-50 text-brand-800'
+                  : 'border-ink-200 bg-white text-ink-500 hover:border-ink-300 hover:text-ink-700'
+              }`}
+            >
+              {s.short}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* действия */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {isStaff && (
+          <>
+            <button onClick={() => setOpen(true)} className="btn bg-ok text-white hover:brightness-95">
+              <Icon name="plus" size={15} /> Добави
+            </button>
+            <button
+              onClick={removePicked}
+              disabled={!pickedIds.length}
+              className="btn bg-danger text-white hover:brightness-95"
+            >
+              <Icon name="close" size={15} /> Изтрий{pickedIds.length ? ` (${pickedIds.length})` : ''}
+            </button>
+          </>
+        )}
+        <button onClick={() => window.print()} className="btn bg-warn text-white hover:brightness-95">
+          <Icon name="print" size={15} /> Принтирай
+        </button>
+        <button onClick={() => setShowFilter((v) => !v)} className="btn-ghost ml-auto">
+          <Icon name="filter" size={15} /> Филтър
+        </button>
+      </div>
+
+      {showFilter && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-ink-200 bg-white px-4 py-3 text-[13px] text-ink-600">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={showDrafts} onChange={(e) => setShowDrafts(e.target.checked)} className="h-4 w-4 rounded" />
+            Покажи черновите
+          </label>
+          <span className="h-4 w-px bg-ink-200" />
+          <span>{students.length} ученика</span>
+          <span className="h-4 w-px bg-ink-200" />
+          <span>Среден успех на класа: <b className="text-ink-800">{avgFmt(classAvg)}</b></span>
+          {isStaff && (
+            <button
+              onClick={() => setPicked({})}
+              className="ml-auto text-[12px] font-semibold text-brand-700 hover:underline"
+            >
+              Изчисти избора
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-3 lg:grid-cols-[250px_minmax(0,1fr)]">
+        {/* предмети */}
+        <div className="card max-h-[72vh] overflow-y-auto p-1.5">
+          {subjects.map((s) => {
+            const c = subjectCount(s.id)
+            const on = s.id === subjectId
+            return (
+              <button
+                key={s.id}
+                onClick={() => onSelectSubject(s.id)}
+                className={`flex w-full items-center gap-1.5 rounded-lg px-2.5 py-2 text-left text-[12.5px] transition ${
+                  on ? 'bg-brand-50 font-semibold text-brand-800' : 'text-ink-700 hover:bg-ink-50'
+                }`}
+              >
+                <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                <span className="g5 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold">{c.t1}</span>
+                <span className="g6 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold">{c.t2}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* класна книга */}
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-[13px] font-bold text-ink-900">
+              {subjectName(subjectId)}
+              {teacher && <span className="font-normal text-ink-600"> — {teacher.firstName} {teacher.lastName}</span>}
+            </p>
+            <p className="text-[11px] text-ink-500">
+              Заместители:{' '}
+              {deputies.length
+                ? deputies.map((d) => `${d.firstName} ${d.lastName}`).join(', ')
+                : '—'}
+            </p>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-ink-200 bg-white">
+            <table className="w-full border-collapse">
+              <thead className="bg-ink-50">
+                <tr>
+                  <th className="th w-14" rowSpan={2}>№</th>
+                  <th className="th" rowSpan={2}>Ученик</th>
+                  <th className="th border-l border-ink-200 text-center" colSpan={2}>Първи срок</th>
+                  <th className="th border-l border-ink-200 text-center" colSpan={2}>Втори срок</th>
+                  <th className="th border-l border-ink-200 text-center" rowSpan={2}>Годишна</th>
+                </tr>
+                <tr>
+                  <th className="th border-l border-ink-200 text-center">Текущи</th>
+                  <th className="th text-center">Срочна</th>
+                  <th className="th border-l border-ink-200 text-center">Текущи</th>
+                  <th className="th text-center">Срочна</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100">
+                {students.map((s) => {
+                  const isPicked = !!picked[s.id]
+                  const left = s.status !== 'активен'
+                  return (
+                    <tr
+                      key={s.id}
+                      className={`${left ? 'bg-[#fde8e8]/70' : isPicked ? 'bg-brand-50/60' : ''} hover:bg-ink-50/60`}
+                    >
+                      <td className="td">
+                        <div className="flex items-center gap-2">
+                          {isStaff && (
+                            <input
+                              type="checkbox"
+                              checked={isPicked}
+                              onChange={(e) => setPicked((p) => ({ ...p, [s.id]: e.target.checked }))}
+                              className="h-3.5 w-3.5 rounded border-ink-300"
+                            />
+                          )}
+                          <span className="text-[12px] font-bold text-ink-400">{s.number}</span>
+                        </div>
+                      </td>
+                      <td className="td">
+                        <span className="font-medium">{nameOf(s)}</span>
+                        {s.sen && <Badge tone="purple" className="ml-1.5">СОП</Badge>}
+                        {left && <span className="ml-1.5 text-[11px] text-[#b42318]">({s.status})</span>}
+                      </td>
+                      {([1, 2] as const).map((term) => (
+                        <Fragment key={term}>
+                          <td className="td border-l border-ink-100 align-top">
+                            {gradeCell(cell(s.id, term, 'cur'))}
+                          </td>
+                          <td className="td align-top">
+                            {gradeCell(cell(s.id, term, 'sro'), false)}
+                          </td>
+                        </Fragment>
+                      ))}
+                      <td className="td border-l border-ink-100 align-top">
+                        {gradeCell(cell(s.id, 1, 'god'), false)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {!teacher && (
+            <div className="mt-3">
+              <Badge tone="warn">Няма назначен учител по този предмет в паралелката</Badge>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {isStaff && (
+        <>
+          <GradeModal open={open} onClose={() => setOpen(false)} students={students} subjectId={subjectId} classId={classId} />
+          <EditGradeModal grade={edit} onClose={() => setEdit(null)} />
+        </>
+      )}
+    </>
+  )
+}
