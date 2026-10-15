@@ -25,6 +25,9 @@ const COLLECTIONS = [
   // раздели в „Дневник"
   'sanctions', 'classNotes', 'supportPlans', 'vhkLessons', 'classMeetings',
   'correctionalExams', 'equivalenceExams',
+  // по статиите от помощния център
+  'absenceNotes', 'gradeExemptions', 'deleteRequests',
+  'norms', 'normResults', 'trainingPlans', 'combinedGroups',
 ] as const
 
 /**

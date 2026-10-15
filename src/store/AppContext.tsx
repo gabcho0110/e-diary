@@ -3,7 +3,9 @@ import type {
   DB, User, RoleId, Grade, Absence, Message, Task, Material, EventItem,
   Test, Note, MeetingSlot, Fee, Student, Klass, Subject, AuditEntry, Exam,
   Sanction, ClassNote, SupportPlan, VhkLesson, ClassMeeting,
-  CorrectionalExam, EquivalenceExam,
+  CorrectionalExam, EquivalenceExam, AbsenceNote, DeleteRequest, Norm,
+  NormResult, TrainingPlan, ThemePlan, ScheduleEntry, AnnualResults,
+  NvoResult, DziResult,
 } from '../lib/types'
 import { storage, type StorageMode } from '../lib/storage'
 import { MODULES, type ModuleDef } from '../lib/modules'
@@ -102,6 +104,95 @@ interface Ctx {
   setEquivalenceExam: (
     classId: string, studentId: string, subjectId: string, year: string, grade: number | null,
   ) => void
+
+  // ── права в дневника ─────────────────────────────────────────────────────
+  /** класен ръководител на паралелката */
+  isHomeroom: (classId: string) => boolean
+  /** учител, който преподава в паралелката */
+  teachesIn: (classId: string) => boolean
+  /**
+   * Учителят може да трие само свои записи; класният ръководител и
+   * администраторът — всички. Точно както е описано в помощния център.
+   */
+  canDeleteAuthored: (authorId: string, classId?: string) => boolean
+
+  // ── отсъствия и извинителни бележки ──────────────────────────────────────
+  addAbsenceNotes: (n: Omit<AbsenceNote, 'id' | 'createdAt'>[]) => void
+  updateAbsenceNote: (id: string, patch: Partial<AbsenceNote>) => void
+  deleteAbsenceNote: (id: string) => void
+  /** уважава всички неуважени отсъствия на ученик в периода на бележката */
+  applyAbsenceNote: (noteId: string) => number
+  /** „Уважи всички неуважени" — връща колко са уважени */
+  excuseAllUnexcused: (classId: string, reason: Absence['reason'], note?: string) => number
+  /** меко изтриване — записът остава видим през филтър „Изтрити" */
+  softDeleteAbsence: (id: string, reason?: string) => void
+  restoreAbsence: (id: string) => void
+
+  // ── оценки ───────────────────────────────────────────────────────────────
+  softDeleteGrade: (id: string, reason?: string) => void
+  restoreGrade: (id: string) => void
+  setGradeExemption: (studentId: string, subjectId: string, term: 1 | 2, on: boolean) => void
+  updateNote: (id: string, patch: Partial<Note>) => void
+
+  // ── заявки за изтриване („стриктен режим") ───────────────────────────────
+  addDeleteRequest: (r: Omit<DeleteRequest, 'id' | 'createdAt' | 'status'>) => void
+  decideDeleteRequest: (id: string, approve: boolean) => void
+
+  // ── теми ─────────────────────────────────────────────────────────────────
+  updateThemeRows: (planId: string, rows: ThemePlan['rows']) => void
+  setThemeTaken: (planId: string, no: number, taken: boolean, when?: string) => void
+
+  // ── разписание ───────────────────────────────────────────────────────────
+  updateScheduleEntry: (id: string, patch: Partial<ScheduleEntry>) => void
+  addScheduleEntries: (e: Omit<ScheduleEntry, 'id'>[]) => void
+  /** изтрива разписанието за период; връща броя засегнати часа */
+  deleteScheduleRange: (classId: string, from: string, to: string) => number
+  /** копира разписанието на един период върху друг */
+  duplicateSchedule: (classId: string, from: string, to: string) => number
+
+  updateExam: (id: string, patch: Partial<Exam>) => void
+
+  // ── ученици ──────────────────────────────────────────────────────────────
+  /** преномерира класа по подадения ред (или по азбучен ред) */
+  renumberStudents: (classId: string, orderedIds: string[]) => void
+  setAnnualResults: (studentId: string, patch: Partial<AnnualResults>) => void
+  addNvoResult: (studentId: string, r: Omit<NvoResult, 'id'>) => void
+  deleteNvoResult: (studentId: string, id: string) => void
+  addDziResult: (studentId: string, r: Omit<DziResult, 'id'>) => void
+  deleteDziResult: (studentId: string, id: string) => void
+  /** преместване: в друга паралелка, в друго училище или отписване */
+  moveStudent: (
+    studentId: string,
+    kind: 'паралелка' | 'училище' | 'отписан',
+    targetClassId?: string,
+    note?: string,
+  ) => void
+  restoreStudent: (studentId: string) => void
+  /** заличава ученика само от тази паралелка (само администратор) */
+  purgeStudent: (studentId: string) => void
+  /** какво ще се изтрие, ако ученикът се заличи — показва се преди потвърждение */
+  purgeImpact: (studentId: string) => Record<string, number>
+  addParent: (
+    studentId: string,
+    p: { firstName: string; lastName: string; phone: string; email: string; relation: string },
+  ) => void
+  setDoctor: (studentId: string, name: string, phone: string) => void
+  updateStudentDocs: (studentId: string, patch: Record<string, string>) => void
+
+  // ── нормативи и тренировъчен план ────────────────────────────────────────
+  addNorm: (n: Omit<Norm, 'id'>) => void
+  deleteNorm: (id: string) => void
+  addNormResults: (r: Omit<NormResult, 'id'>[]) => void
+  deleteNormResult: (id: string) => void
+  saveTrainingPlan: (
+    p: Omit<TrainingPlan, 'id' | 'updatedAt' | 'authorId'> & { id?: string },
+  ) => void
+  deleteTrainingPlan: (id: string) => void
+
+  // ── ВЧК / родителски срещи / подкрепа ────────────────────────────────────
+  updateVhkLesson: (id: string, patch: Partial<VhkLesson>) => void
+  updateClassMeeting: (id: string, patch: Partial<ClassMeeting>) => void
+  updateSupportPlan: (id: string, patch: Partial<SupportPlan>) => void
 }
 
 const AppCtx = createContext<Ctx | null>(null)
@@ -548,6 +639,405 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
           if (i >= 0) d.equivalenceExams[i] = { ...d.equivalenceExams[i], grade }
           else d.equivalenceExams.push({ id: `eqv_${Date.now()}`, classId, studentId, subjectId, year, grade })
+        }),
+
+      // ── права в дневника ─────────────────────────────────────────────────
+      // Помощният център е категоричен: учителят пипа само своите записи,
+      // класният ръководител и администраторът — всички.
+      isHomeroom: (classId) => {
+        if (!user) return false
+        if (adm) return true
+        const k = db.classes.find((c) => c.id === classId)
+        return !!k && k.homeroomTeacherId === user.id
+      },
+      teachesIn: (classId) => {
+        if (!user) return false
+        if (adm) return true
+        return (user.classIds ?? []).includes(classId)
+      },
+      canDeleteAuthored: (authorId, classId) => {
+        if (!user) return false
+        if (adm) return true
+        if (classId && db.classes.find((c) => c.id === classId)?.homeroomTeacherId === user.id) return true
+        return authorId === user.id
+      },
+
+      // ── отсъствия и извинителни бележки ──────────────────────────────────
+      addAbsenceNotes: (items) =>
+        update((d) => {
+          items.forEach((n, i) =>
+            d.absenceNotes.unshift({
+              ...n,
+              id: `abn_${Date.now()}_${i}`,
+              createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+            }),
+          )
+        }),
+      updateAbsenceNote: (id, patch) =>
+        update((d) => {
+          const i = d.absenceNotes.findIndex((n) => n.id === id)
+          if (i >= 0) d.absenceNotes[i] = { ...d.absenceNotes[i], ...patch }
+        }),
+      deleteAbsenceNote: (id) =>
+        update((d) => { d.absenceNotes = d.absenceNotes.filter((n) => n.id !== id) }),
+
+      applyAbsenceNote: (noteId) => {
+        const note = db.absenceNotes.find((n) => n.id === noteId)
+        if (!note) return 0
+        const targets = db.absences.filter(
+          (a) =>
+            a.studentId === note.studentId &&
+            a.date >= note.from &&
+            a.date <= note.to &&
+            !a.excused &&
+            !a.deletedAt,
+        )
+        if (!targets.length) return 0
+        const ids = new Set(targets.map((a) => a.id))
+        const reason: Absence['reason'] = note.kind === 'медицинска' ? 'извинено' : 'семейни причини'
+        const label = note.kind === 'медицинска' ? 'Извинено (медицинска бележка)' : 'Семейни причини'
+        update((d) => {
+          d.absences = d.absences.map((a) =>
+            ids.has(a.id)
+              ? { ...a, excused: true, reason, excuseReason: label, noteId: note.id, note: note.number ?? a.note }
+              : a,
+          )
+          const i = d.absenceNotes.findIndex((n) => n.id === note.id)
+          if (i >= 0) d.absenceNotes[i] = { ...d.absenceNotes[i], applied: true, unexcusedCount: 0 }
+        })
+        return targets.length
+      },
+
+      excuseAllUnexcused: (classId, reason, note) => {
+        const targets = db.absences.filter(
+          (a) => a.classId === classId && !a.excused && a.reason !== 'закъснение' && !a.deletedAt,
+        )
+        if (!targets.length) return 0
+        const ids = new Set(targets.map((a) => a.id))
+        update((d) => {
+          d.absences = d.absences.map((a) =>
+            ids.has(a.id)
+              ? { ...a, excused: true, reason, excuseReason: reason === 'семейни причини' ? 'Семейни причини' : 'Извинено', note: note ?? a.note }
+              : a,
+          )
+        })
+        return targets.length
+      },
+
+      softDeleteAbsence: (id, reason) =>
+        update((d) => {
+          const i = d.absences.findIndex((a) => a.id === id)
+          if (i < 0) return
+          d.absences[i] = {
+            ...d.absences[i],
+            deletedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+            deletedById: user?.id ?? '',
+            note: reason ?? d.absences[i].note,
+          }
+        }),
+      restoreAbsence: (id) =>
+        update((d) => {
+          const i = d.absences.findIndex((a) => a.id === id)
+          if (i < 0) return
+          const { deletedAt: _d, deletedById: _b, ...rest } = d.absences[i]
+          d.absences[i] = rest as typeof d.absences[number]
+        }),
+
+      // ── оценки ───────────────────────────────────────────────────────────
+      softDeleteGrade: (id, reason) =>
+        update((d) => {
+          const i = d.grades.findIndex((g) => g.id === id)
+          if (i < 0) return
+          d.grades[i] = {
+            ...d.grades[i],
+            deletedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+            deletedById: user?.id ?? '',
+            deleteReason: reason,
+          }
+        }),
+      restoreGrade: (id) =>
+        update((d) => {
+          const i = d.grades.findIndex((g) => g.id === id)
+          if (i < 0) return
+          const { deletedAt: _d, deletedById: _b, deleteReason: _r, ...rest } = d.grades[i]
+          d.grades[i] = rest as typeof d.grades[number]
+        }),
+      setGradeExemption: (studentId, subjectId, term, on) =>
+        update((d) => {
+          const i = d.gradeExemptions.findIndex(
+            (e) => e.studentId === studentId && e.subjectId === subjectId && e.term === term,
+          )
+          if (on && i < 0) {
+            d.gradeExemptions.push({
+              id: `gex_${Date.now()}`, studentId, subjectId, term,
+              authorId: user?.id ?? '', date: new Date().toISOString().slice(0, 10),
+            })
+          } else if (!on && i >= 0) {
+            d.gradeExemptions.splice(i, 1)
+          }
+        }),
+      updateNote: (id, patch) =>
+        update((d) => {
+          const i = d.notes.findIndex((n) => n.id === id)
+          if (i >= 0) d.notes[i] = { ...d.notes[i], ...patch }
+        }),
+
+      // ── заявки за изтриване („стриктен режим") ───────────────────────────
+      addDeleteRequest: (r) =>
+        update((d) => {
+          d.deleteRequests.unshift({
+            ...r,
+            id: `dlr_${Date.now()}`,
+            createdAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+            status: 'чакаща',
+          })
+        }),
+      decideDeleteRequest: (id, approve) =>
+        update((d) => {
+          const i = d.deleteRequests.findIndex((r) => r.id === id)
+          if (i < 0) return
+          const req = d.deleteRequests[i]
+          d.deleteRequests[i] = { ...req, status: approve ? 'одобрена' : 'отхвърлена', decidedById: user?.id }
+          if (!approve) return
+          // одобрена заявка → записът най-после се изтрива
+          if (req.kind === 'оценка') d.grades = d.grades.filter((g) => g.id !== req.entityId)
+          if (req.kind === 'отсъствие') d.absences = d.absences.filter((a) => a.id !== req.entityId)
+          if (req.kind === 'отзив') d.notes = d.notes.filter((n) => n.id !== req.entityId)
+        }),
+
+      // ── теми ─────────────────────────────────────────────────────────────
+      updateThemeRows: (planId, rows) =>
+        update((d) => {
+          const i = d.themePlans.findIndex((p) => p.id === planId)
+          if (i >= 0) d.themePlans[i] = { ...d.themePlans[i], rows }
+        }),
+      setThemeTaken: (planId, no, taken, when) =>
+        update((d) => {
+          const p = d.themePlans.find((x) => x.id === planId)
+          if (!p) return
+          const row = p.rows.find((r) => r.no === no)
+          if (!row) return
+          row.taken = taken
+          row.date = taken ? when : undefined
+        }),
+
+      // ── разписание ───────────────────────────────────────────────────────
+      updateScheduleEntry: (id, patch) =>
+        update((d) => {
+          const i = d.schedule.findIndex((s) => s.id === id)
+          if (i >= 0) d.schedule[i] = { ...d.schedule[i], ...patch }
+        }),
+      addScheduleEntries: (items) =>
+        update((d) => {
+          items.forEach((e, i) => d.schedule.push({ ...e, id: `sch_${Date.now()}_${i}` }))
+        }),
+      deleteScheduleRange: (classId, from, to) => {
+        const doomed = db.schedule.filter(
+          (s) => s.classId === classId && (!s.validFrom || (s.validFrom <= to && (s.validTo ?? s.validFrom) >= from)),
+        )
+        if (!doomed.length) return 0
+        const ids = new Set(doomed.map((s) => s.id))
+        update((d) => {
+          d.schedule = d.schedule.filter((s) => !ids.has(s.id))
+          // изтриването на часове отнася и въведените в тях отсъствия
+          d.absences = d.absences.filter(
+            (a) => !(a.classId === classId && a.date >= from && a.date <= to && !a.wholeDay),
+          )
+        })
+        return doomed.length
+      },
+      duplicateSchedule: (classId, from, to) => {
+        const source = db.schedule.filter((s) => s.classId === classId)
+        if (!source.length) return 0
+        update((d) => {
+          const fresh = source.map((s, i) => ({
+            ...s,
+            id: `sch_dup_${Date.now()}_${i}`,
+            validFrom: from,
+            validTo: to,
+          }))
+          d.schedule.push(...fresh)
+        })
+        return source.length
+      },
+
+      updateExam: (id, patch) =>
+        update((d) => {
+          const i = d.exams.findIndex((e) => e.id === id)
+          if (i >= 0) d.exams[i] = { ...d.exams[i], ...patch }
+        }),
+
+      // ── ученици ──────────────────────────────────────────────────────────
+      renumberStudents: (classId, orderedIds) =>
+        update((d) => {
+          orderedIds.forEach((sid, i) => {
+            const st = d.students.find((s) => s.id === sid)
+            if (st && st.classId === classId) st.number = i + 1
+          })
+        }),
+      setAnnualResults: (studentId, patch) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (st) st.annualResults = { ...(st.annualResults ?? {}), ...patch }
+        }),
+      addNvoResult: (studentId, r) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (!st) return
+          st.nvoResults = [...(st.nvoResults ?? []), { ...r, id: `nvo_${Date.now()}` }]
+        }),
+      deleteNvoResult: (studentId, id) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (st) st.nvoResults = (st.nvoResults ?? []).filter((r) => r.id !== id)
+        }),
+      addDziResult: (studentId, r) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (!st) return
+          st.dziResults = [...(st.dziResults ?? []), { ...r, id: `dzi_${Date.now()}` }]
+        }),
+      deleteDziResult: (studentId, id) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (st) st.dziResults = (st.dziResults ?? []).filter((r) => r.id !== id)
+        }),
+
+      moveStudent: (studentId, kind, targetClassId, note) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (!st) return
+          const oldClass = d.classes.find((c) => c.id === st.classId)
+          if (kind === 'отписан') {
+            st.status = 'отписан'
+            if (note) st.senNote = note
+            return
+          }
+          if (kind === 'училище') {
+            st.status = 'преместен'
+            if (note) st.senNote = note
+            return
+          }
+          if (!targetClassId || targetClassId === st.classId) return
+          // преместване в друга паралелка — реквизитите се пренасят ръчно
+          st.status = 'преместен'
+          const target = d.classes.find((c) => c.id === targetClassId)
+          if (!target) return
+          const moved: Student = { ...st, classId: target.id, number: target.studentIds.length + 1, status: 'активен' }
+          d.students[d.students.findIndex((s) => s.id === studentId)] = moved
+          target.studentIds.push(st.id)
+          if (oldClass) oldClass.studentIds = oldClass.studentIds.filter((x) => x !== st.id)
+        }),
+      restoreStudent: (studentId) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (!st) return
+          st.status = 'активен'
+          const k = d.classes.find((c) => c.id === st.classId)
+          if (k && !k.studentIds.includes(st.id)) k.studentIds.push(st.id)
+        }),
+      purgeStudent: (studentId) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (!st) return
+          const cid = st.classId
+          // заличава само от тази паралелка — реквизитите остават по другите
+          d.students = d.students.filter((s) => s.id !== studentId)
+          const k = d.classes.find((c) => c.id === cid)
+          if (k) k.studentIds = k.studentIds.filter((x) => x !== studentId)
+          d.grades = d.grades.filter((g) => g.studentId !== studentId)
+          d.absences = d.absences.filter((a) => a.studentId !== studentId)
+          d.notes = d.notes.filter((n) => n.studentId !== studentId)
+          d.classNotes = d.classNotes.filter((n) => n.studentId !== studentId)
+          d.supportPlans = d.supportPlans.filter((s) => s.studentId !== studentId)
+          d.sanctions = d.sanctions.filter((s) => s.studentId !== studentId)
+          d.absenceNotes = d.absenceNotes.filter((n) => n.studentId !== studentId)
+          d.gradeExemptions = d.gradeExemptions.filter((e) => e.studentId !== studentId)
+          d.correctionalExams = d.correctionalExams.filter((e) => e.studentId !== studentId)
+          d.equivalenceExams = d.equivalenceExams.filter((e) => e.studentId !== studentId)
+        }),
+      purgeImpact: (studentId) => ({
+        'Оценки': db.grades.filter((g) => g.studentId === studentId).length,
+        'Отсъствия': db.absences.filter((a) => a.studentId === studentId).length,
+        'Отзиви': db.notes.filter((n) => n.studentId === studentId).length,
+        'Бележки': db.classNotes.filter((n) => n.studentId === studentId).length,
+        'Подкрепа': db.supportPlans.filter((s) => s.studentId === studentId).length,
+        'Санкции': db.sanctions.filter((s) => s.studentId === studentId).length,
+        'Извинителни бележки': db.absenceNotes.filter((n) => n.studentId === studentId).length,
+      }),
+      addParent: (studentId, p) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (!st) return
+          const nu: User = {
+            id: `usr_par_${Date.now()}`,
+            username: '', password: '',
+            firstName: p.firstName, lastName: p.lastName,
+            email: p.email, phone: p.phone,
+            roles: ['parent'], childrenIds: [studentId],
+            active: false,
+            createdAt: new Date().toISOString().slice(0, 10),
+          }
+          d.users.push(nu)
+          st.parentIds.push(nu.id)
+          st.relation = p.relation
+        }),
+      setDoctor: (studentId, name, phone) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (!st) return
+          st.doctor = name
+          st.doctorPhone = phone
+        }),
+      updateStudentDocs: (studentId, patch) =>
+        update((d) => {
+          const st = d.students.find((s) => s.id === studentId)
+          if (st) st.documents = { ...(st.documents ?? {}), ...patch }
+        }),
+
+      // ── нормативи и тренировъчен план ────────────────────────────────────
+      addNorm: (n) => update((d) => { d.norms.push({ ...n, id: `nrm_${Date.now()}` }) }),
+      deleteNorm: (id) =>
+        update((d) => {
+          d.norms = d.norms.filter((n) => n.id !== id)
+          d.normResults = d.normResults.filter((r) => r.normId !== id)
+        }),
+      addNormResults: (rows) =>
+        update((d) => {
+          rows.forEach((r, i) => d.normResults.push({ ...r, id: `nrs_${Date.now()}_${i}` }))
+        }),
+      deleteNormResult: (id) =>
+        update((d) => { d.normResults = d.normResults.filter((r) => r.id !== id) }),
+      saveTrainingPlan: (p) =>
+        update((d) => {
+          const i = p.id ? d.trainingPlans.findIndex((x) => x.id === p.id) : -1
+          const row: TrainingPlan = {
+            ...p,
+            id: p.id ?? `trp_${Date.now()}`,
+            authorId: user?.id ?? '',
+            updatedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+          } as TrainingPlan
+          if (i >= 0) d.trainingPlans[i] = row
+          else d.trainingPlans.unshift(row)
+        }),
+      deleteTrainingPlan: (id) =>
+        update((d) => { d.trainingPlans = d.trainingPlans.filter((p) => p.id !== id) }),
+
+      // ── ВЧК / родителски срещи / подкрепа ────────────────────────────────
+      updateVhkLesson: (id, patch) =>
+        update((d) => {
+          const i = d.vhkLessons.findIndex((v) => v.id === id)
+          if (i >= 0) d.vhkLessons[i] = { ...d.vhkLessons[i], ...patch }
+        }),
+      updateClassMeeting: (id, patch) =>
+        update((d) => {
+          const i = d.classMeetings.findIndex((m) => m.id === id)
+          if (i >= 0) d.classMeetings[i] = { ...d.classMeetings[i], ...patch }
+        }),
+      updateSupportPlan: (id, patch) =>
+        update((d) => {
+          const i = d.supportPlans.findIndex((s) => s.id === id)
+          if (i >= 0) d.supportPlans[i] = { ...d.supportPlans[i], ...patch }
         }),
     }
   }, [db, user, mode, warning, login, loginAs, logout, register, resetDemo, update, log])

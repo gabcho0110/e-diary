@@ -5,6 +5,8 @@ import type {
   GeneratedDoc, VirtualRoom, IfoDiary, SyncLog, GradeType, RoleId,
   Sanction, ClassNote, SupportPlan, VhkLesson, ClassMeeting,
   CorrectionalExam, EquivalenceExam,
+  AbsenceNote, GradeExemption, DeleteRequest, Norm, NormResult, TrainingPlan,
+  CombinedGroup,
 } from './types'
 
 // ── Детерминиран генератор, за да е стабилен наборът от данни ────────────────
@@ -359,6 +361,12 @@ export function buildDB(): DB {
   const grades: Grade[] = []
   let gi = 0
   const activeStudents = students.filter((s) => s.status === 'активен')
+
+  /** Активните ученици на една паралелка, подредени по номер в класа. */
+  const studentsOf = (k: Klass): Student[] =>
+    students
+      .filter((s) => s.classId === k.id && s.status === 'активен')
+      .sort((a, b) => a.number - b.number)
 
   activeStudents.forEach((st) => {
     const k = classes.find((c) => c.id === st.classId)!
@@ -974,6 +982,138 @@ export function buildDB(): DB {
   const correctionalExams: CorrectionalExam[] = []
   const equivalenceExams: EquivalenceExam[] = []
 
+  // ── Извинителни бележки към отсъствията ──────────────────────────────────
+  // Референтният дневник държи три вида: родителски (въведени от родител или
+  // класен), медицински (идват от интеграцията с МЗ) и „други".
+  const noteTexts = [
+    'Ученикът отсъства по семейни причини.',
+    'Отсъствие по здравословни причини — в домашни условия.',
+    'Отсъствие, уважено от класния ръководител.',
+    'Отсъствие по лични причини, съгласувано с родител.',
+  ]
+  const absenceNotes: AbsenceNote[] = []
+  let ani = 0
+  classes.forEach((k) => {
+    studentsOf(k).slice(0, 6).forEach((st, si) => {
+      if (!chance(0.45)) return
+      ani++
+      const kind: AbsenceNote['kind'] = si % 3 === 0 ? 'медицинска' : si % 3 === 1 ? 'родителска' : 'друга'
+      const day = int(2, 24)
+      const span = kind === 'родителска' ? int(1, 5) : int(1, 3)
+      absenceNotes.push({
+        id: uid('abn', ani),
+        classId: k.id,
+        studentId: st.id,
+        kind,
+        from: d(YEAR, 10, day),
+        to: d(YEAR, 10, Math.min(28, day + span)),
+        text: noteTexts[ani % noteTexts.length],
+        number: `№ ${1000 + ani} / ${d(YEAR, 10, day)}`,
+        authorId: kind === 'медицинска' ? nurse.id : (k.homeroomTeacherId ?? admin.id),
+        createdAt: d(YEAR, 10, day),
+        applied: kind === 'медицинска',
+      })
+    })
+  })
+
+  // ── Освобождаване от оценяване по предмет (най-често ФВС) ────────────────
+  const gradeExemptions: GradeExemption[] = []
+  const peSubject = subjects.find((s) => /физическо|фвс/i.test(s.name))
+  if (peSubject) {
+    studentsOf(classes[0]).slice(0, 3).forEach((st, i) => {
+      gradeExemptions.push({
+        id: uid('gex', i + 1),
+        studentId: st.id,
+        subjectId: peSubject.id,
+        term: 1,
+        authorId: classes[0].homeroomTeacherId ?? admin.id,
+        date: d(YEAR, 10, 12),
+      })
+    })
+  }
+
+  // ── Сборни групи (спортни училища) ───────────────────────────────────────
+  const combinedGroups: CombinedGroup[] = [
+    {
+      id: 'cgr_1',
+      name: 'ФВС — сборна група (8-А + 8-Б)',
+      subjectId: peSubject?.id ?? subjects[0].id,
+      classIds: classes.slice(0, 2).map((c) => c.id),
+      studentIds: classes.slice(0, 2).flatMap((c) => studentsOf(c).slice(0, 8).map((s) => s.id)),
+      teacherId: teachers[0].id,
+      kind: 'сборна група',
+    },
+    {
+      id: 'cgr_2',
+      name: 'Спортна паралелка — лека атлетика',
+      subjectId: peSubject?.id ?? subjects[0].id,
+      classIds: classes.slice(0, 1).map((c) => c.id),
+      studentIds: studentsOf(classes[0]).slice(0, 10).map((s) => s.id),
+      teacherId: teachers[0].id,
+      kind: 'спортна паралелка',
+    },
+  ]
+
+  // Критериите идват от системата за оценяване на спортната подготовка.
+  const normDefs = [
+    { name: 'Бягане 60 м', unit: 'сек.' },
+    { name: 'Скок на дължина от място', unit: 'см' },
+    { name: 'Хвърляне на топка 1 кг', unit: 'м' },
+    { name: 'Бягане 1000 м', unit: 'мин.' },
+    { name: 'Лицеви опори', unit: 'брой' },
+  ]
+  const norms: Norm[] = normDefs.map((n, i) => ({
+    id: uid('nrm', i + 1),
+    groupId: 'cgr_1',
+    subjectId: combinedGroups[0].subjectId,
+    name: n.name,
+    unit: n.unit,
+  }))
+
+  // ── Резултати в раздел „Резултати" ───────────────────────────────────────
+  // Годишен успех, ООП, РП и ДО се нанасят от класния; удостоверението се
+  // попълва в края на начален етап (1–3 клас).
+  students.forEach((st) => {
+    const k = classes.find((c) => c.id === st.classId)
+    if (!k) return
+    const annual = 4 + Math.round(rnd() * 20) / 10 // 4,0 – 6,0
+    st.annualResults = {
+      annualGrade: Math.min(6, Math.max(3, Number(annual.toFixed(2)))),
+      oop: chance(0.35) ? Math.min(6, Math.max(3, Number((4 + rnd() * 2).toFixed(2)))) : undefined,
+      rp: chance(0.25) ? Math.min(6, Math.max(3, Number((4 + rnd() * 2).toFixed(2)))) : undefined,
+      doResult: chance(0.2) ? Math.min(6, Math.max(3, Number((4 + rnd() * 2).toFixed(2)))) : undefined,
+    }
+    if (k.grade <= 3) {
+      st.annualResults.certificateNo = `${100 + st.number} / ${d(YEAR + 1, 6, 15)}`
+      st.annualResults.certificateDate = d(YEAR + 1, 6, 15)
+    }
+    if (k.grade >= 7 && chance(0.5)) {
+      const subs = k.subjectIds.slice(0, 3)
+      st.nvoResults = subs.slice(0, 2).map((sid, i) => ({
+        id: uid('nvo', students.indexOf(st) * 10 + i),
+        subjectId: sid,
+        points: int(40, 95),
+        maxPoints: 100,
+        grade: Number((3.5 + rnd() * 2.5).toFixed(2)),
+        date: d(YEAR + 1, 6, 10),
+      }))
+    }
+  })
+
+  // ── ДЗИ — само за зрелостниците (12 клас) ────────────────────────────────
+  classes.filter((k) => k.grade === 12).forEach((k) => {
+    studentsOf(k).forEach((st, i) => {
+      st.dziResults = [
+        { id: uid('dzi', i * 3 + 1), examNo: 1, subjectId: k.subjectIds[0], kind: 'ООП', points: int(50, 92), grade: Number((4 + rnd() * 2).toFixed(2)), date: d(YEAR + 1, 5, 20) },
+        { id: uid('dzi', i * 3 + 2), examNo: 2, subjectId: k.subjectIds[1] ?? k.subjectIds[0], kind: 'ПП', points: int(45, 90), grade: Number((4 + rnd() * 2).toFixed(2)), date: d(YEAR + 1, 5, 23) },
+      ]
+    })
+  })
+
+  const deleteRequests: DeleteRequest[] = []
+  const normResults: NormResult[] = []
+  const trainingPlans: TrainingPlan[] = []
+
   return {
     school, users, subjects, classes, students, grades, absences, notes, schedule,
     homework, exams, messages, tests, materials, tasks, events, meetings, activities,
@@ -982,6 +1122,8 @@ export function buildDB(): DB {
     syncLogs, audit: [],
     sanctions, classNotes, supportPlans, vhkLessons, classMeetings,
     correctionalExams, equivalenceExams,
+    absenceNotes, gradeExemptions, deleteRequests,
+    norms, normResults, trainingPlans, combinedGroups,
   }
 }
 

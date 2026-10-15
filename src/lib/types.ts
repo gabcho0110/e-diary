@@ -116,6 +116,10 @@ export interface Student {
   ifo?: boolean // индивидуална форма на обучение
   cdo?: boolean
   doctor?: string
+  /** телефон на личния лекар — задължителен заедно с името */
+  doctorPhone?: string
+  /** родителска връзка — попълва се при добавяне на родител */
+  relation?: string
   photo?: string
   admittedAt: string
   /** място на раждане — показва се в раздел „Ученици" */
@@ -128,6 +132,75 @@ export interface Student {
   mandatorySubjects?: boolean
   /** лично дело: код на документ → дата на получаване */
   documents?: Record<string, string>
+  /** предмети, по които ученикът е освободен от оценяване (записва се „(осв.)") */
+  exemptSubjectIds?: string[]
+  /** предмети, по които е забранено въвеждането на оценки */
+  blockedSubjectIds?: string[]
+  /** предмети, по които ученик със СОП се оценява качествено */
+  qualitativeSubjectIds?: string[]
+  /** специалност (профилиращ предмет) — попълва се в профила */
+  specialty?: string
+  /** паралелки, в които ученикът се обучава (ЦДО — може да е в повече от една) */
+  extraClassIds?: string[]
+  /** съобщение за записване в класа — „номер/дата" */
+  enrollmentMessage?: string
+  /** снимка, качена от класния ръководител (чака одобрение) */
+  photoPending?: boolean
+  /** ученическа подкрепа — екипът, който работи с ученика */
+  supportTeamIds?: string[]
+  /** план за подкрепа — дейностите */
+  supportActivities?: string[]
+  /** национално външно оценяване (НВО) */
+  nvoResults?: NvoResult[]
+  /** държавни зрелостни изпити (ДЗИ) */
+  dziResults?: DziResult[]
+  /** резултати в раздел „Резултати" — годишен успех, ООП, РП, ДО, удостоверение */
+  annualResults?: AnnualResults
+}
+
+/** Един ред от външното оценяване (НВО) — точки и оценка по предмет. */
+export interface NvoResult {
+  id: string
+  subjectId: string
+  points: number
+  maxPoints: number
+  grade: number
+  date: string
+}
+
+/** Държавен зрелостен изпит — ООП / ПП. */
+export interface DziResult {
+  id: string
+  /** № на изпита — 1, 2, 3 */
+  examNo: number
+  subjectId: string
+  /** тип на изпита — задължителен (ООП) или профилиращ (ПП) */
+  kind: 'ООП' | 'ПП'
+  points: number
+  grade: number
+  date: string
+}
+
+/** Раздел „Резултати" — годишен успех, ООП, РП, ДО и удостоверението. */
+export interface AnnualResults {
+  annualGrade?: number
+  /** оценка от ООП */
+  oop?: number
+  /** резултат от РП */
+  rp?: number
+  /** резултат от ДО */
+  doResult?: number
+  /** номер на удостоверението за завършен клас */
+  certificateNo?: string
+  certificateDate?: string
+  /** подготвителна група — способности в началото на годината */
+  abilityStart?: string
+  /** подготвителна група — способности в края на годината */
+  abilityEnd?: string
+  /** готовност за постъпване в 1-ви клас (реквизит 3-19) */
+  schoolReady?: 'да' | 'не' | 'частично'
+  /** дали ученикът полага поправителен изпит */
+  correctionalState?: 'полага' | 'завършва' | 'остава'
 }
 
 export type GradeType =
@@ -161,6 +234,25 @@ export interface Grade {
   qualitative?: string
   examId?: string
   createdAt: string
+  /** оценката е изтрита — показва се само при филтър „Изтрити оценки" */
+  deletedAt?: string
+  deletedById?: string
+  /** основание при „стриктен режим" */
+  deleteReason?: string
+  /** дата на въвеждане — за баджа „Нова" */
+  enteredAt?: string
+  /** оценка от друго училище — не участва в средния успех */
+  fromOtherSchool?: boolean
+}
+
+/** Освобождаване от оценяване по предмет за даден срок. */
+export interface GradeExemption {
+  id: string
+  studentId: string
+  subjectId: string
+  term: 1 | 2
+  authorId: string
+  date: string
 }
 
 export interface Absence {
@@ -179,6 +271,112 @@ export interface Absence {
   wholeDay?: boolean
   /** мотивът, с който е уважено отсъствието */
   excuseReason?: string
+  /** изтрито отсъствие — показва се само при филтър „Изтрити отсъствия" */
+  deletedAt?: string
+  deletedById?: string
+  /** бележката, с която е уважено (родителска / медицинска) */
+  noteId?: string
+}
+
+/** Извинителна бележка към отсъствията — родителска, медицинска или „други". */
+export interface AbsenceNote {
+  id: string
+  classId: string
+  studentId: string
+  kind: 'родителска' | 'медицинска' | 'друга'
+  from: string
+  to: string
+  text: string
+  /** номер/дата на бележката, напр. „№ 1042 / 12.10.2026" */
+  number?: string
+  attachment?: string
+  authorId: string
+  createdAt: string
+  /** броят отсъствия в периода, които все още не са уважени */
+  unexcusedCount?: number
+  /** дали вече е приложена към отсъствията */
+  applied?: boolean
+}
+
+/** Заявка за изтриване при активиран „стриктен режим" в училището. */
+export interface DeleteRequest {
+  id: string
+  kind: 'оценка' | 'отсъствие' | 'отзив'
+  entityId: string
+  classId: string
+  studentId: string
+  reason: string
+  requestedById: string
+  createdAt: string
+  status: 'чакаща' | 'одобрена' | 'отхвърлена'
+  decidedById?: string
+}
+
+/** Критерий за оценяване на спортна подготовка (норматив). */
+export interface Norm {
+  id: string
+  groupId: string
+  subjectId: string
+  name: string
+  /** мерна единица — сек., м, кг, брой… */
+  unit: string
+}
+
+/** Резултат от тест по норматив. */
+export interface NormResult {
+  id: string
+  groupId: string
+  normId: string
+  studentId: string
+  /** вид на теста */
+  kind: string
+  date: string
+  /** числов резултат (секунди, метри…) */
+  value?: number
+  /** оценка */
+  grade?: number
+}
+
+/** Тренировъчен план — по месеци, за сборна група. */
+export interface TrainingPlan {
+  id: string
+  groupId: string
+  month: string
+  year: string
+  /** микроцикъл */
+  micro?: string
+  /** период */
+  period?: string
+  /** мезоцикъл */
+  mezo?: string
+  /** спортен календар по седмици — 1..5 */
+  weeks: {
+    no: number
+    competition: string
+    camp?: string
+    /** степен на натоварване */
+    load?: 'ниска' | 'средна' | 'висока' | 'максимална'
+    /** тренировъчен режим по дни — П тренировка, С състезание, Пч почивка */
+    days: string[]
+  }[]
+  /** средства — брой часове */
+  means: { name: string; hours: number }[]
+  /** контролни нормативи */
+  controlNorms: string
+  authorId: string
+  updatedAt: string
+}
+
+/** Сборна група — паралелка, която се води от няколко класа (спортни училища). */
+export interface CombinedGroup {
+  id: string
+  name: string
+  subjectId: string
+  classIds: string[]
+  studentIds: string[]
+  teacherId: string
+  /** вид — сборна група или спортна паралелка */
+  kind: 'сборна група' | 'спортна паралелка'
 }
 
 export interface Note {
@@ -205,6 +403,15 @@ export interface ScheduleEntry {
   /** ОРЕС / ИУЧ / ЗИП */
   tag?: string
   week?: 'all' | 'even' | 'odd'
+  /** вид обучение — присъствено или онлайн (ОРЕС) */
+  studyKind?: 'Присъствено' | 'Онлайн обучение'
+  /** разбиване на един час на две групи — напр. БЕЛ Група 1 и Група 2 */
+  groups?: { subjectId: string; teacherId: string; roomId?: string; label: string }[]
+  /** период, за който важи разписанието */
+  validFrom?: string
+  validTo?: string
+  /** името на разписанието — напр. „Четни седмици" или „Дневен режим 2" */
+  planName?: string
 }
 
 export interface Homework {
@@ -497,6 +704,8 @@ export interface Sanction {
   orderDate: string
   from: string
   to: string
+  /** основание за санкцията */
+  ground?: string
   authorId: string
 }
 
@@ -548,6 +757,8 @@ export interface ClassMeeting {
   title: string
   from: string
   to: string
+  /** дневен ред на срещата */
+  description?: string
   authorId: string
   createdAt: string
 }
@@ -622,4 +833,12 @@ export interface DB {
   classMeetings: ClassMeeting[]
   correctionalExams: CorrectionalExam[]
   equivalenceExams: EquivalenceExam[]
+  // по статиите от помощния център
+  absenceNotes: AbsenceNote[]
+  gradeExemptions: GradeExemption[]
+  deleteRequests: DeleteRequest[]
+  norms: Norm[]
+  normResults: NormResult[]
+  trainingPlans: TrainingPlan[]
+  combinedGroups: CombinedGroup[]
 }
