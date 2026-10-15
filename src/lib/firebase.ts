@@ -7,19 +7,17 @@
  *  • не добавя ~500 KB към bundle-а и не изисква допълнителна зависимост;
  *  • работи с всяка валидна конфигурация, стига `databaseURL` да е верен.
  *
- * ВАЖНО: стойностите по-долу са примерни/публични. Ако базата не отговаря,
- * дневникът стартира с локални данни и показва предупреждение — вижте
- * `storage.load()`.
+ * Проект: `e-diary-5360f` (проверен — базата отговаря на GET/PATCH).
+ * Полетата `storageBucket`/`appId` изрично липсват, защото Storage никога не е
+ * създаван в проекта и нищо в дневника не ги ползва — от REST слоя се ползва
+ * само `databaseURL`.
  */
 export const firebaseConfig = {
-  apiKey: 'AIzaSyAadcNbAJwNjtT9R34X_gwYFvFqOZUu85c',
-  authDomain: 'e-diary-2f2cd.firebaseapp.com',
-  databaseURL: 'https://e-diary-2f2cd-default-rtdb.europe-west1.firebasedatabase.app',
-  projectId: 'e-diary-2f2cd',
-  storageBucket: 'e-diary-2f2cd.firebasestorage.app',
-  messagingSenderId: '630236603822',
-  appId: '1:630236603822:web:86fda14a50c8b079fc4a5f',
-  measurementId: 'G-D2ZBXHTXGF',
+  apiKey: 'AIzaSyD_91l57TukR93PKXFs10TsF5-06qjxt4w',
+  authDomain: 'e-diary-5360f.firebaseapp.com',
+  databaseURL: 'https://e-diary-5360f-default-rtdb.europe-west1.firebasedatabase.app',
+  projectId: 'e-diary-5360f',
+  messagingSenderId: '828147112769',
 }
 
 /** Коренът, под който се пази целият дневник на училището. */
