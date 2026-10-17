@@ -202,24 +202,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<StorageMode>('local')
   const [user, setUser] = useState<User | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
+  /** какво точно се случва докато базата се зарежда (за екрана „Зареждане…") */
+  const [phase, setPhase] = useState('')
   const saveTimer = useRef<number | null>(null)
 
   // ── първоначално зареждане ────────────────────────────────────────────────
   useEffect(() => {
     let alive = true
-    storage.load().then((res) => {
-      if (!alive) return
-      setDb(res.db)
-      setMode(res.mode)
-      if (res.warning) setWarning(res.warning)
-      const sid = storage.session.get()
-      if (sid) {
-        const u = res.db.users.find((x) => x.id === sid)
-        if (u) setUser(u)
-      }
-    })
+    // ако тегленето бавни, потребителят да види, че не е закачило
+    const heartbeat = window.setTimeout(() => {
+      if (alive) setPhase((p) => p || 'Теглене на базата от Firebase…')
+    }, 2500)
+    storage
+      .load({ onProgress: (m) => { if (alive) setPhase(m) } })
+      .then((res) => {
+        if (!alive) return
+        window.clearTimeout(heartbeat)
+        setPhase('')
+        setDb(res.db)
+        setMode(res.mode)
+        if (res.warning) setWarning(res.warning)
+        const sid = storage.session.get()
+        if (sid) {
+          const u = res.db.users.find((x) => x.id === sid)
+          if (u) setUser(u)
+        }
+      })
     return () => {
       alive = false
+      window.clearTimeout(heartbeat)
     }
   }, [])
 
@@ -1047,7 +1058,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       <div className="flex h-screen items-center justify-center bg-ink-50">
         <div className="text-center">
           <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
-          <p className="text-sm text-ink-500">Зареждане на училищните данни…</p>
+          <p className="text-sm text-ink-500">{phase || 'Зареждане на училищните данни…'}</p>
         </div>
       </div>
     )

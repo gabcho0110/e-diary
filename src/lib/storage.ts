@@ -7,12 +7,19 @@ const KEY_AUTH = 'e-dnevnik.session.v1'
 
 export type StorageMode = 'cloud' | 'local'
 
+/** Съобщение за напредъка на дългите стъпки (теглене/качване на базата). */
+export type Progress = (message: string) => void
+
 export interface LoadResult {
   db: DB
   mode: StorageMode
   /** true, ако данните са генерирани наново (празна база) */
   seeded: boolean
   warning?: string
+}
+
+export interface LoadOptions {
+  onProgress?: Progress
 }
 
 /** Всички колекции от модела (без `school`, което е единичен обект). */
@@ -81,12 +88,22 @@ function fromWire(wire: Wire): DB {
   const buckets: Record<string, unknown[]> = {}
   for (const coll of COLLECTIONS) buckets[coll] = []
 
-  for (const [path, raw] of Object.entries(wire)) {
-    if (path === 'school') continue
-    const coll = path.slice(0, path.indexOf('/'))
-    if (!(coll in buckets)) continue
-    const item = unpack(raw)
-    if (item) buckets[coll].push(item)
+  for (const [key, raw] of Object.entries(wire)) {
+    if (key === 'school') continue
+    if (typeof raw === 'string') {
+      // плосък формат: ключът е „<колекция>/<id>", стойността е JSON низ
+      const coll = key.slice(0, key.indexOf('/'))
+      if (!(coll in buckets)) continue
+      const item = unpack(raw)
+      if (item) buckets[coll].push(item)
+    } else if (raw && typeof raw === 'object' && key in buckets) {
+      // вложен формат — точно така RTDB връща това, което е писало с flat PATCH:
+      // ключът е името на колекцията, стойността е обект „<id> → JSON низ"
+      for (const val of Object.values(raw as Record<string, unknown>)) {
+        const item = unpack(val)
+        if (item) buckets[key].push(item)
+      }
+    }
   }
 
   for (const coll of COLLECTIONS) {
@@ -120,11 +137,13 @@ function diff(next: Wire): Wire | null {
 }
 
 /** Праща ключовете на парчета, за да не е един огромен кадър при първоначално качване. */
-async function push(wire: Wire, chunkSize = 120): Promise<void> {
+async function push(wire: Wire, chunkSize = 120, onProgress?: Progress): Promise<void> {
   const entries = Object.entries(wire)
+  const total = Math.max(1, Math.ceil(entries.length / chunkSize))
   for (let i = 0; i < entries.length; i += chunkSize) {
     const slice = Object.fromEntries(entries.slice(i, i + chunkSize))
     await rtdb.patch(DB_ROOT, slice)
+    onProgress?.(`Качване на базата… ${Math.min(i / chunkSize + 1, total)} / ${total}`)
   }
 }
 
@@ -147,14 +166,20 @@ export const storage = {
   },
 
   /** Чете от Firebase; при празна база я създава и качва. */
-  async load(): Promise<LoadResult> {
+  async load(options: LoadOptions = {}): Promise<LoadResult> {
+    const p = options.onProgress
     try {
+      p?.('Свързване с Firebase…')
       const wire = (await rtdb.get<Wire>(DB_ROOT)) ?? {}
+      p?.('Подготовка на данните…')
 
       if (Object.keys(wire).length > 0) {
         const db = fromWire(wire)
         if (isUsable(db)) {
-          lastWire = wire
+          // ВАЖНО: `lastWire` трябва да е в същия формат, който произвежда
+          // `toWire()` — иначе първият `save()` смята всеки запис за нов и
+          // качва цялата база наново (165 последователни PATCH-а).
+          lastWire = toWire(db)
           currentMode = 'cloud'
           // снимка за офлайн работа — най-добро усилие, квотата може да не стигне
           try { localStorage.setItem(KEY_LOCAL, JSON.stringify(db)) } catch { /* ignore */ }
@@ -165,7 +190,7 @@ export const storage = {
       // Базата е празна (или непълна) → създаваме училището и го качваме.
       const fresh = buildDB()
       lastWire = null
-      const res = await this.save(fresh)
+      const res = await this.save(fresh, p)
       currentMode = res.ok ? 'cloud' : 'local'
       return {
         db: fresh,
@@ -201,7 +226,7 @@ export const storage = {
   },
 
   /** Записва само променените записи (един multi-path update). */
-  async save(db: DB): Promise<{ ok: boolean; warning?: string }> {
+  async save(db: DB, onProgress?: Progress): Promise<{ ok: boolean; warning?: string }> {
     const wire = toWire(db)
     const patch = diff(wire)
     if (!patch) return { ok: true }
@@ -209,8 +234,9 @@ export const storage = {
     try {
       if (!lastWire) {
         // първоначално качване на цялата база
-        await push(wire)
+        await push(wire, 120, onProgress)
       } else {
+        onProgress?.('Запис на промените…')
         await rtdb.patch(DB_ROOT, patch as Record<string, unknown>)
       }
       lastWire = wire
