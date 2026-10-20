@@ -145,8 +145,18 @@ export const ADMIN_MENU: AdminGroup[] = [
 
 export const ADMIN_ITEMS: AdminItem[] = ADMIN_MENU.flatMap((g) => g.items)
 
+/**
+ * Екрани, които не са самостоятелни модули, но живеят под „Дневник" и им
+ * трябва заглавие в горната лента.
+ */
+export const SUB_TITLES: Record<string, string> = {
+  '/razpisanie': 'Моето разписание',
+}
+
 /** Заглавие за горната лента — търси първо в подменюто, после в модулите. */
 export function pageTitle(pathname: string): string {
+  const sub = SUB_TITLES[pathname]
+  if (sub) return sub
   const item = ADMIN_ITEMS.find((i) => i.path === pathname)
   if (item) return item.name
   const mod = MODULES.find((m) => m.path === pathname)

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
 import { Badge, EmptyState, Icon, PageHeader, Select } from '../components/ui'
+import { classHeaderTitle, personShort, shortClassName } from '../lib/classes'
 import { GradebookTab } from './dnevnik/Gradebook'
 import { AbsencesTab } from './dnevnik/Absences'
 import { ReviewsTab } from './dnevnik/Reviews'
@@ -115,9 +116,18 @@ export default function Dnevnik() {
 
   return (
     <>
+      {/*
+        Заглавието НЕ е „Дневник", а отворената паралелка заедно с класния
+        ръководител — както е в референтния дневник:
+            8В - Александър Г. Тодоров (класен)
+      */}
       <PageHeader
-        title="Дневник"
-        subtitle="Оценки, отсъствия, отзиви, разписание, теми, домашни, контролни, санкции и изпити по паралелки."
+        title={klass ? classHeaderTitle(klass, db.users, user?.id) : 'Дневник'}
+        subtitle={
+          klass
+            ? `${klass.studentIds.length} ученика · ${classSubjects.length} предмета${klass.profile ? ` · профил ${klass.profile}` : ''} · ${klass.shift} смяна`
+            : 'Оценки, отсъствия, отзиви, разписание, теми, домашни, контролни, санкции и изпити по паралелки.'
+        }
         icon="book"
         actions={
           <Select value={classId} onChange={(e) => setView({ klass: e.target.value, subject: '' })} className="w-auto min-w-[150px]">
@@ -130,16 +140,17 @@ export default function Dnevnik() {
 
       {klass && (
         <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-ink-500">
-          <Badge tone="brand">{klass.name}</Badge>
-          <span>{klass.studentIds.length} ученика</span>
-          <span className="h-4 w-px bg-ink-200" />
+          <Badge tone="brand">{shortClassName(klass.name)}</Badge>
           <span>
             Класен ръководител:{' '}
-            <b className="text-ink-700">
-              {db.users.find((u) => u.id === klass.homeroomTeacherId)?.firstName}{' '}
-              {db.users.find((u) => u.id === klass.homeroomTeacherId)?.lastName}
-            </b>
+            <b className="text-ink-700">{personShort(db.users.find((u) => u.id === klass.homeroomTeacherId)) || '—'}</b>
           </span>
+          {klass.homeroomTeacherId === user?.id && (
+            <>
+              <span className="h-4 w-px bg-ink-200" />
+              <Badge tone="ok">това е вашият клас</Badge>
+            </>
+          )}
           {klass.profile && <><span className="h-4 w-px bg-ink-200" /><span>Профил: <b className="text-ink-700">{klass.profile}</b></span></>}
           <span className="h-4 w-px bg-ink-200" />
           <span>Смяна: <b className="text-ink-700">{klass.shift}</b></span>

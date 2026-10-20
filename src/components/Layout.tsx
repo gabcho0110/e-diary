@@ -3,6 +3,8 @@ import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-
 import { useApp } from '../store/AppContext'
 import { ADMIN_ITEMS, ADMIN_MENU, pageTitle } from '../lib/modules'
 import { ROLE_MAP, roleNames } from '../lib/roles'
+import { groupClasses, shortClassName, classHeaderTitle } from '../lib/classes'
+import type { Klass } from '../lib/types'
 import { Avatar, Badge, Icon } from './ui'
 
 // ── Цветове на страничното меню (по образеца на референтния дневник) ────────
@@ -27,50 +29,90 @@ function SubRow({
   )
 }
 
-function GroupRow({ label, open, onClick }: { label: string; open: boolean; onClick: () => void }) {
+/**
+ * Мрежата с паралелките — по един ред за клас, а буквите една до друга:
+ *   8 - А  Б
+ *   9 - А  Б
+ * Така целият списък се събира в няколко реда, вместо да се спуска надолу.
+ */
+function ClassGrid({
+  classes, activeId, homeroomIds, onPick,
+}: {
+  classes: Klass[]
+  activeId: string
+  homeroomIds: Set<string>
+  onPick: (id: string) => void
+}) {
+  const groups = useMemo(() => groupClasses(classes), [classes])
+
+  if (!groups.length) {
+    return <p className="px-2 py-1 text-[11.5px] text-white/50">Няма достъпни паралелки</p>
+  }
+
   return (
-    <button
-      onClick={onClick}
-      className="flex w-full items-center gap-2 rounded-[3px] py-[7px] pl-2.5 pr-2 text-left text-[12.5px] text-white/70 transition hover:bg-white/10 hover:text-white"
-    >
-      <span className="grid h-[15px] w-[15px] shrink-0 place-items-center rounded-[3px] border border-white/35 text-[11px] font-bold leading-none">
-        {open ? '−' : '+'}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <Icon name="chevron" size={12} className={`shrink-0 opacity-50 transition-transform ${open ? 'rotate-90' : ''}`} />
-    </button>
+    <div className="mb-1 space-y-[3px]">
+      {groups.map((g) => (
+        <div key={g.grade} className="flex items-center gap-1">
+          <span className="w-[32px] shrink-0 text-right text-[11.5px] font-semibold leading-[20px] text-white/60">
+            {g.grade}
+          </span>
+          <span className="text-[11px] leading-[20px] text-white/35">-</span>
+          <div className="flex flex-wrap gap-[3px]">
+            {g.items.map(({ klass, letter }) => {
+              const on = klass.id === activeId
+              const home = homeroomIds.has(klass.id)
+              return (
+                <button
+                  key={klass.id}
+                  onClick={() => onPick(klass.id)}
+                  title={`${shortClassName(klass.name)}${home ? ' (мой клас)' : ''}`}
+                  aria-current={on ? 'page' : undefined}
+                  className={`h-[20px] min-w-[21px] rounded-[2px] px-1 text-[11.5px] font-bold leading-none transition ${
+                    on
+                      ? 'bg-white text-[#2b6ca3] shadow-sm'
+                      : home
+                        ? 'bg-white/25 text-white hover:bg-white/35'
+                        : 'text-white/85 hover:bg-white/15'
+                  }`}
+                >
+                  {letter}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
 /**
- * Подменюто на „Дневник" — детето (за родител/ученик), моето разписание,
- * класовете, на които потребителят е класен ръководител, и паралелките.
+ * Подменюто на „Дневник" — детето (за родител/ученик), „Моето разписание" и
+ * паралелките, подредени по клас.
  */
 function DnevnikSubmenu({ onNavigate }: { onNavigate: () => void }) {
   const { user, myClasses, myChildren, className } = useApp()
   const [params] = useSearchParams()
   const loc = useLocation()
   const navigate = useNavigate()
-  const [openOsnovni, setOpenOsnovni] = useState(true)
 
   const onDnevnik = loc.pathname === '/dnevnik'
-  const activeTab = params.get('tab') ?? 'grades'
   const activeClass = params.get('class') ?? myClasses[0]?.id ?? ''
 
   const isFamily = !!user?.roles.some((r) => r === 'parent' || r === 'student')
   const child = isFamily ? myChildren[0] : undefined
 
-  const homeroom = user ? myClasses.filter((c) => c.homeroomTeacherId === user.id) : []
-  const homeroomIds = new Set(homeroom.map((c) => c.id))
-  const others = myClasses.filter((c) => !homeroomIds.has(c.id))
-  const osnovni = others.length ? others : myClasses
+  const homeroomIds = useMemo(
+    () => new Set(myClasses.filter((c) => c.homeroomTeacherId === user?.id).map((c) => c.id)),
+    [myClasses, user],
+  )
 
   const go = (to: string) => { navigate(to); onNavigate() }
 
   return (
     <div className="mb-1 ml-[13px] border-l border-white/20 pl-1.5">
       {child && (
-        <div className="flex items-center gap-2 rounded-[3px] px-2 py-[7px] text-[12.5px] font-semibold text-white">
+        <div className="mb-1 flex items-center gap-2 rounded-[3px] px-2 py-[6px] text-[12.5px] font-semibold text-white">
           <Icon name="person" size={14} className="shrink-0 opacity-70" />
           <span className="truncate">
             {child.firstName} {child.lastName}-{className(child.classId).replace('-', '')}
@@ -79,36 +121,20 @@ function DnevnikSubmenu({ onNavigate }: { onNavigate: () => void }) {
       )}
 
       <SubRow
-        icon="grid"
+        icon="calendar"
         label="Моето разписание"
-        active={onDnevnik && activeTab === 'schedule'}
-        onClick={() => go('/dnevnik?tab=schedule')}
+        active={loc.pathname === '/razpisanie'}
+        onClick={() => go('/razpisanie')}
       />
 
-      {homeroom.map((c) => (
-        <SubRow
-          key={c.id}
-          icon="grid"
-          label={`${c.name.replace('-', '')} (мой клас)`}
-          bold
-          active={onDnevnik && activeClass === c.id}
-          onClick={() => go(`/dnevnik?class=${c.id}`)}
-        />
-      ))}
+      <div className="my-1.5 h-px bg-white/15" />
 
-      <div className="my-1 h-px bg-white/15" />
-
-      <GroupRow label="Основни" open={openOsnovni} onClick={() => setOpenOsnovni((v) => !v)} />
-      {openOsnovni && osnovni.map((c) => (
-        <SubRow
-          key={c.id}
-          icon="user"
-          label={c.name.replace('-', ' - ')}
-          indent
-          active={onDnevnik && activeClass === c.id}
-          onClick={() => go(`/dnevnik?class=${c.id}`)}
-        />
-      ))}
+      <ClassGrid
+        classes={myClasses}
+        activeId={onDnevnik ? activeClass : ''}
+        homeroomIds={homeroomIds}
+        onPick={(id) => go(`/dnevnik?class=${id}`)}
+      />
     </div>
   )
 }
@@ -156,7 +182,7 @@ function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCollapsed
   const [openAdmin, setOpenAdmin] = useState(loc.pathname.startsWith('/administracia'))
 
   useEffect(() => {
-    if (loc.pathname === '/dnevnik') setOpenDnevnik(true)
+    if (loc.pathname === '/dnevnik' || loc.pathname === '/razpisanie') setOpenDnevnik(true)
     if (loc.pathname.startsWith('/administracia')) setOpenAdmin(true)
   }, [loc.pathname])
 
@@ -253,7 +279,9 @@ function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCollapsed
                   onClick={() => (collapsed ? navigate('/dnevnik') : setOpenDnevnik((v) => !v))}
                   aria-expanded={openDnevnik}
                   className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition ${
-                    loc.pathname === '/dnevnik' ? 'bg-white/20 font-semibold text-white' : 'text-white/85 hover:bg-white/10 hover:text-white'
+                    loc.pathname === '/dnevnik' || loc.pathname === '/razpisanie'
+                      ? 'bg-white/20 font-semibold text-white'
+                      : 'text-white/85 hover:bg-white/10 hover:text-white'
                   }`}
                 >
                   <Icon name="book" size={17} />
@@ -389,11 +417,23 @@ function UserMenu() {
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const { mode, warning, dismissWarning } = useApp()
+  const { mode, warning, dismissWarning, db, user, myClasses } = useApp()
   const [collapsed, setCollapsed] = useState(false)
   const loc = useLocation()
+  const [params] = useSearchParams()
 
-  const title = pageTitle(loc.pathname) || (loc.pathname === '/' ? 'Начало' : '')
+  /**
+   * За „Дневник" горната лента показва отворената паралелка, а не думата
+   * „Дневник": 8В - Александър Г. Тодоров (класен).
+   */
+  const classTitle = useMemo(() => {
+    if (loc.pathname !== '/dnevnik') return ''
+    const id = params.get('class') ?? myClasses[0]?.id ?? ''
+    const klass = myClasses.find((c) => c.id === id)
+    return klass ? classHeaderTitle(klass, db.users, user?.id) : ''
+  }, [loc.pathname, params, myClasses, db.users, user])
+
+  const title = classTitle || pageTitle(loc.pathname) || (loc.pathname === '/' ? 'Начало' : '')
 
   return (
     <div className="flex h-screen overflow-hidden bg-ink-50">

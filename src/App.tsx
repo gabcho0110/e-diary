@@ -5,6 +5,7 @@ import Layout from './components/Layout'
 import Login from './pages/Login'
 import Nachalo from './pages/Nachalo'
 import Dnevnik from './pages/Dnevnik'
+import MoyatRazpisanie from './pages/MoyatRazpisanie'
 import Paralelki from './pages/administracia/Paralelki'
 import Potrebiteli from './pages/administracia/Potrebiteli'
 import { Planove, Predmeti } from './pages/administracia/Predmeti'
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/nachalo" replace />} />
         <Route path="/nachalo" element={<Guard id="nachalo"><Nachalo /></Guard>} />
         <Route path="/dnevnik" element={<Guard id="dnevnik"><Dnevnik /></Guard>} />
+        <Route path="/razpisanie" element={<Guard id="dnevnik"><MoyatRazpisanie /></Guard>} />
 
         {/* Администрация — подменюто от референтния дневник */}
         <Route path="/administracia" element={<Navigate to="/administracia/paralelki" replace />} />
