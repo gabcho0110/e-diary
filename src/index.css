@@ -152,12 +152,13 @@ body {
 }
 
 /* Grade pill colours follow the Bulgarian convention: higher = better.
-   Плътни, ярки цветове — 2 е силно червено, 6 е наситено зелено. */
-.g2 { background: #e6453a; color: #fff; }
-.g3 { background: #f2790f; color: #fff; }
-.g4 { background: #f5b400; color: #6b4a00; }
-.g5 { background: #7ac143; color: #fff; }
-.g6 { background: #189e57; color: #fff; }
+   Точните цветове от образеца: 2 червено, 3 оранжево, 4 жълто, 5 синьо,
+   6 зелено — плътни, с бял текст и прави ъгли. */
+.g2 { background: #e7505a; color: #fff; }
+.g3 { background: #f2784b; color: #fff; }
+.g4 { background: #f7ca18; color: #fff; text-shadow: 0 1px 1px rgba(0, 0, 0, .22); }
+.g5 { background: #3598dc; color: #fff; }
+.g6 { background: #26c281; color: #fff; }
 
 /* Броячите в левия панел на класната книга — меки, за да не се състезават
    с оценките, които вече са ярки. */

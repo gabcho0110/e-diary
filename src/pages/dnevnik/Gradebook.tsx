@@ -87,7 +87,7 @@ function GradesAddPage({
                 key={g}
                 type="button"
                 onClick={() => setAll(String(g))}
-                className={`h-8 w-8 rounded text-[13.5px] font-bold transition hover:brightness-105 g${g}`}
+                className={`h-8 w-8 rounded-[2px] text-[13.5px] font-bold transition hover:brightness-105 g${g}`}
               >
                 {g}
               </button>
@@ -142,7 +142,7 @@ function GradesAddPage({
                           key={g}
                           type="button"
                           onClick={() => setGrade((p) => ({ ...p, [s.id]: String(g) }))}
-                          className={`h-7 w-7 rounded text-[12.5px] font-bold transition ${
+                          className={`h-7 w-7 rounded-[2px] text-[12.5px] font-bold transition ${
                             val === String(g) ? `g${g} ring-2 ring-brand-500/50` : 'bg-ink-100 text-ink-500 hover:bg-ink-200'
                           }`}
                         >
@@ -249,7 +249,7 @@ function EditGradeModal({ grade, onClose }: { grade: Grade | null; onClose: () =
               <button
                 key={g}
                 onClick={() => setValue(g)}
-                className={`h-9 flex-1 rounded-lg text-sm font-bold transition ${
+                className={`h-9 flex-1 rounded-[2px] text-sm font-bold transition ${
                   value === g ? `g${g} ring-2 ring-brand-500/40` : 'bg-ink-100 text-ink-500 hover:bg-ink-200'
                 }`}
               >
