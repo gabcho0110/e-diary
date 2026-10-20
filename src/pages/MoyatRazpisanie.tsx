@@ -1,17 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../store/AppContext'
-import { Icon, Select } from '../components/ui'
-import { ScheduleTab } from './dnevnik/Schedule'
+import { Icon } from '../components/ui'
 import { shortClassName } from '../lib/classes'
 import { DAY_NAMES, addDays, ddmm, isoWeek, mondayOf, periodRange } from '../lib/week'
 
 /**
  * „Моето разписание" — седмицата на самия потребител.
  *
- * Учителят вижда часовете, които преподава (по всички паралелки), а родителят
- * и ученикът — разписанието на своето дете. Ако профилът не води часове
- * (напр. системен администратор), екранът предлага избор на паралелка, за да
- * не остава празен.
+ * Учителят вижда САМО часовете, които преподава (по всички паралелки), а
+ * родителят и ученикът — разписанието на своето дете. Екранът никога не
+ * показва разписанието на паралелка на мястото на личното: ако за профила
+ * няма въведени часове, това се казва изрично и се показва къде се въвеждат.
  */
 export default function MoyatRazpisanie() {
   const { db, user, myClasses, myChildren, isStaff } = useApp()
@@ -33,7 +32,21 @@ export default function MoyatRazpisanie() {
     return db.schedule.filter((s) => s.teacherId === user.id)
   }, [db.schedule, db.students, user, isFamily])
 
-  const [fallbackClass, setFallbackClass] = useState(myClasses[0]?.id ?? '')
+  /**
+   * Какво преподава по план — за да не е празен екранът, когато още няма
+   * въведени часове. Идва от „Предмети и учители" на паралелките.
+   */
+  const teaching = useMemo(() => {
+    if (!user || isFamily) return []
+    const rows: { subjectId: string; classId: string }[] = []
+    for (const k of myClasses) {
+      for (const p of k.plan ?? []) {
+        if (p.teacherId === user.id) rows.push({ subjectId: p.subjectId, classId: k.id })
+      }
+    }
+    return rows
+  }, [myClasses, user, isFamily])
+
   const empty = myLessons.length === 0
 
   const monday = useMemo(() => addDays(mondayOf(new Date()), offset * 7), [offset])
@@ -72,38 +85,49 @@ export default function MoyatRazpisanie() {
       ? `${user.firstName} ${user.middleName ? `${user.middleName.charAt(0)}. ` : ''}${user.lastName}`
       : ''
 
-  // ── празно разписание: показваме избраната паралелка ─────────────────────
+  /*
+    Празно разписание. НЕ показваме разписанието на паралелка — това не е
+    „моето" разписание и заблуждава, че часовете са въведени.
+  */
   if (empty) {
     return (
       <>
         <div className="mb-4">
           <h1 className="text-[20px] font-bold tracking-tight text-ink-900">Моето разписание</h1>
           <p className="mt-0.5 text-[12.5px] text-ink-500">
-            {isStaff
-              ? 'Към профила ви няма назначени часове. Изберете паралелка, за да видите нейното разписание.'
-              : 'За вашия профил няма въведено разписание.'}
+            {title || 'Седмицата на часовете, които преподавате'}
           </p>
         </div>
 
-        {isStaff && myClasses.length > 0 ? (
-          <>
-            <div className="mb-3 flex items-center gap-2">
-              <span className="text-[12.5px] text-ink-500">Паралелка:</span>
-              <Select value={fallbackClass} onChange={(e) => setFallbackClass(e.target.value)} className="w-auto min-w-[160px]">
-                {myClasses.map((c) => <option key={c.id} value={c.id}>{shortClassName(c.name)}</option>)}
-              </Select>
+        <div className="rounded-[3px] border border-dashed border-ink-200 bg-white px-4 py-10 text-center">
+          <Icon name="calendar" size={22} className="mx-auto text-ink-300" />
+          <p className="mt-2 text-[13.5px] font-semibold text-ink-700">
+            {isStaff ? 'Към профила ви няма назначени часове' : 'Няма въведено разписание'}
+          </p>
+          <p className="mx-auto mt-1 max-w-[520px] text-[12.5px] leading-[19px] text-ink-500">
+            {isStaff
+              ? 'Тук се показват само часовете, които преподавате вие — не разписанието на паралелките. За вашия профил още няма въведен нито един ваш час в седмичното разписание.'
+              : 'За вашия профил още няма въведено разписание. То се въвежда от администрацията на училището.'}
+          </p>
+
+          {teaching.length > 0 && (
+            <div className="mx-auto mt-4 max-w-[520px] overflow-hidden rounded-[3px] border border-[#e3e9ee] bg-[#f5f7f9] text-left">
+              <p className="border-b border-[#e3e9ee] px-3 py-1.5 text-[11.5px] font-bold uppercase tracking-wide text-ink-500">
+                Преподавате по план
+              </p>
+              {teaching.map((t, i) => (
+                <div
+                  key={`${t.classId}-${t.subjectId}-${i}`}
+                  className="flex flex-wrap items-baseline gap-1.5 border-b border-[#e3e9ee] px-3 py-1.5 text-[13px] last:border-b-0"
+                >
+                  <b className="text-ink-900">{db.subjects.find((s) => s.id === t.subjectId)?.name ?? '—'}</b>
+                  <span className="text-ink-400">—</span>
+                  <span className="text-ink-700">{className(t.classId)}</span>
+                </div>
+              ))}
             </div>
-            {fallbackClass && <ScheduleTab classId={fallbackClass} />}
-          </>
-        ) : (
-          <div className="rounded border border-dashed border-ink-200 bg-white px-4 py-14 text-center">
-            <Icon name="calendar" size={22} className="mx-auto text-ink-300" />
-            <p className="mt-2 text-[13px] font-semibold text-ink-700">Няма часове за показване</p>
-            <p className="mt-1 text-[12.5px] text-ink-500">
-              Разписанието се въвежда от администрацията в „Администрация → Разписания".
-            </p>
-          </div>
-        )}
+          )}
+        </div>
       </>
     )
   }
