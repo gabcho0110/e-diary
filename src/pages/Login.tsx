@@ -101,9 +101,9 @@ export default function Login() {
 
           <div className="mt-9 grid max-w-lg grid-cols-3 gap-3">
             {[
-              ['28', 'модула'],
+              ['3', 'модула'],
               ['16', 'роли'],
-              ['500+', 'функции'],
+              ['16', 'раздела в дневника'],
             ].map(([n, l]) => (
               <div key={l} className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
                 <p className="text-2xl font-bold">{n}</p>

@@ -49,6 +49,28 @@ export interface User {
   active: boolean
   twoFactor?: boolean
   createdAt: string
+
+  // ── лични данни от екрана „Добавяне на потребител" ──────────────────────
+  /** научно звание — д-р, доц., проф. */
+  title?: string
+  /** вид на идентификатора — ЕГН, ЛНЧ */
+  idType?: string
+  /** ЕГН / ЛНЧ */
+  egn?: string
+  birthDate?: string
+  birthPlace?: string
+  citizenship?: string
+  gender?: 'М' | 'Ж'
+  /** настоящ адрес */
+  address?: string
+  city?: string
+  /** „Режим Карта" — дали адресът се избира от карта */
+  mapMode?: boolean
+  // ── данни за ролята (учител) ────────────────────────────────────────────
+  initialTeacher?: boolean
+  externalLecturer?: boolean
+  /** номер по образец */
+  sampleNo?: string
 }
 
 export interface School {
@@ -82,6 +104,8 @@ export interface Klass {
   id: string
   /** напр. "8" */
   grade: number
+  /** както се изписва класът — напр. „8", „ПГ(4г.)" */
+  gradeLabel?: string
   /** напр. "Б" */
   letter: string
   /** напр. "8-Б" */
@@ -93,6 +117,38 @@ export interface Klass {
   subjectIds: string[]
   shift: 1 | 2
   form: 'дневна' | 'следобедна' | 'смесена'
+
+  // ── екран „Добавяне на паралелка" ────────────────────────────────────────
+  /** тип на дневника — напр. „Дневник V – XII клас (3-87)" */
+  journalType?: string
+  /** организационна форма — Паралелка / Група */
+  orgForm?: string
+  /** срок на обучение — Една година / Две години */
+  studyTerm?: string
+  /** форма на обучение — Дневна, Следобедна, Смесена… */
+  educationForm?: string
+  /** организация на учебния ден — Първа смяна, Втора смяна… */
+  dayOrg?: string
+  /** вид подготовка — Непрофилирана, Профилирана… */
+  prepKind?: string
+  /** предмети и учители по учебния план (вторият раздел на формата) */
+  plan?: ClassSubjectPlanRow[]
+}
+
+/** Един ред от раздел „Предмети и учители" на паралелката. */
+export interface ClassSubjectPlanRow {
+  subjectId: string
+  teacherId: string
+  /** вид подготовка — ООП, РП, ЗП, ЗИП, ИУЧ, ФУЧ, ОРЕС */
+  prepKind: string
+  /** седмици/занятия — първи срок */
+  weeks1a?: number
+  weeks1b?: number
+  /** седмици/занятия — втори срок */
+  weeks2a?: number
+  weeks2b?: number
+  /** чужд език, който се изучава в часа */
+  foreignLang?: string
 }
 
 export interface Student {

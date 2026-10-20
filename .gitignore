@@ -7,3 +7,6 @@ dist/
 .vite/
 *.tsbuildinfo
 .workbuddy-ai/
+# архиви с кода за сваляне — не влизат в хранилището
+e-dnevnik-kod.zip
+e-dnevnik-izhoden-kod.txt

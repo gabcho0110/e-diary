@@ -56,6 +56,10 @@ const PATHS: Record<string, string> = {
   equals: 'M4 9h16M4 15h16',
   cap: 'M22 10 12 5 2 10l10 5zM6 12.2V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-4.8',
   lines: 'M4 6h16M4 12h16M4 18h10',
+  ban: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8',
+  userPlus: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6',
+  users: 'M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8',
+  rows: 'M3 5h18M3 12h18M3 19h18M7 3v4M13 10v4M17 17v4',
 }
 
 export function Icon({

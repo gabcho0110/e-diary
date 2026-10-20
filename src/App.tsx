@@ -1,37 +1,17 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useApp } from './store/AppContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Nachalo from './pages/Nachalo'
 import Dnevnik from './pages/Dnevnik'
-import MoyatChas from './pages/MoyatChas'
-import Statistiki from './pages/Statistiki'
-import Testove from './pages/Testove'
-import Materiali from './pages/Materiali'
-import Temi from './pages/Temi'
-import IzvanKlasni from './pages/IzvanKlasni'
-import Sastezania from './pages/Sastezania'
-import Portfolio from './pages/Portfolio'
-import Harakteristika from './pages/Harakteristika'
-import Saobshtenia from './pages/Saobshtenia'
-import Sabitia from './pages/Sabitia'
-import Sreshti from './pages/Sreshti'
-import Zadachi from './pages/Zadachi'
-import Administracia from './pages/Administracia'
-import Generator from './pages/Generator'
-import Lektorski from './pages/Lektorski'
-import Sklad from './pages/Sklad'
-import Spravki from './pages/Spravki'
-import Dokumenti from './pages/Dokumenti'
-import Delovodstvo from './pages/Delovodstvo'
-import Taksi from './pages/Taksi'
-import Personal from './pages/Personal'
-import Virtualna from './pages/Virtualna'
-import Ifo from './pages/Ifo'
-import Neispuo from './pages/Neispuo'
-import Profil from './pages/Profil'
+import Paralelki from './pages/administracia/Paralelki'
+import Potrebiteli from './pages/administracia/Potrebiteli'
+import { Planove, Predmeti } from './pages/administracia/Predmeti'
+import { Razpisania, Rezhimi, Shabloni } from './pages/administracia/Razpisania'
+import { Neuchebni, Obrazec1, Srokove, Uchilishte } from './pages/administracia/Nastroyki'
+import { Grupi, Registracii, Snimki, Zayavki } from './pages/administracia/Zayavki'
 import { Icon } from './components/ui'
-import { Link } from 'react-router-dom'
 
 function Forbidden() {
   return (
@@ -60,34 +40,25 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/nachalo" replace />} />
         <Route path="/nachalo" element={<Guard id="nachalo"><Nachalo /></Guard>} />
-
         <Route path="/dnevnik" element={<Guard id="dnevnik"><Dnevnik /></Guard>} />
-        <Route path="/moyat-chas" element={<Guard id="moyat-chas"><MoyatChas /></Guard>} />
-        <Route path="/statistiki" element={<Guard id="statistiki"><Statistiki /></Guard>} />
-        <Route path="/testove" element={<Guard id="testove"><Testove /></Guard>} />
-        <Route path="/materiali" element={<Guard id="materiali"><Materiali /></Guard>} />
-        <Route path="/temi" element={<Guard id="temi"><Temi /></Guard>} />
-        <Route path="/izvan-klasni" element={<Guard id="izvan-klasni"><IzvanKlasni /></Guard>} />
-        <Route path="/sastezania" element={<Guard id="sastezania"><Sastezania /></Guard>} />
-        <Route path="/portfolio" element={<Guard id="portfolio"><Portfolio /></Guard>} />
-        <Route path="/harakteristika" element={<Guard id="harakteristika"><Harakteristika /></Guard>} />
-        <Route path="/saobshtenia" element={<Guard id="saobshtenia"><Saobshtenia /></Guard>} />
-        <Route path="/sabitia" element={<Guard id="sabitia"><Sabitia /></Guard>} />
-        <Route path="/sreshti" element={<Guard id="sreshti"><Sreshti /></Guard>} />
-        <Route path="/zadachi" element={<Guard id="zadachi"><Zadachi /></Guard>} />
-        <Route path="/administracia" element={<Guard id="administracia"><Administracia /></Guard>} />
-        <Route path="/generator" element={<Guard id="generator"><Generator /></Guard>} />
-        <Route path="/lektorski" element={<Guard id="lektorski"><Lektorski /></Guard>} />
-        <Route path="/sklad" element={<Guard id="sklad"><Sklad /></Guard>} />
-        <Route path="/spravki" element={<Guard id="spravki"><Spravki /></Guard>} />
-        <Route path="/dokumenti" element={<Guard id="dokumenti"><Dokumenti /></Guard>} />
-        <Route path="/delovodstvo" element={<Guard id="delovodstvo"><Delovodstvo /></Guard>} />
-        <Route path="/taksi" element={<Guard id="taksi"><Taksi /></Guard>} />
-        <Route path="/personal" element={<Guard id="personal"><Personal /></Guard>} />
-        <Route path="/virtualna" element={<Guard id="virtualna"><Virtualna /></Guard>} />
-        <Route path="/ifo" element={<Guard id="ifo"><Ifo /></Guard>} />
-        <Route path="/neispuo" element={<Guard id="neispuo"><Neispuo /></Guard>} />
-        <Route path="/profil" element={<Guard id="profil"><Profil /></Guard>} />
+
+        {/* Администрация — подменюто от референтния дневник */}
+        <Route path="/administracia" element={<Navigate to="/administracia/paralelki" replace />} />
+        <Route path="/administracia/paralelki" element={<Guard id="administracia"><Paralelki /></Guard>} />
+        <Route path="/administracia/potrebiteli" element={<Guard id="administracia"><Potrebiteli /></Guard>} />
+        <Route path="/administracia/grupi" element={<Guard id="administracia"><Grupi /></Guard>} />
+        <Route path="/administracia/predmeti" element={<Guard id="administracia"><Predmeti /></Guard>} />
+        <Route path="/administracia/planove" element={<Guard id="administracia"><Planove /></Guard>} />
+        <Route path="/administracia/razpisania" element={<Guard id="administracia"><Razpisania /></Guard>} />
+        <Route path="/administracia/rezhimi" element={<Guard id="administracia"><Rezhimi /></Guard>} />
+        <Route path="/administracia/shabloni" element={<Guard id="administracia"><Shabloni /></Guard>} />
+        <Route path="/administracia/neuchebni" element={<Guard id="administracia"><Neuchebni /></Guard>} />
+        <Route path="/administracia/srokove" element={<Guard id="administracia"><Srokove /></Guard>} />
+        <Route path="/administracia/zayavki-iztrivane" element={<Guard id="administracia"><Zayavki /></Guard>} />
+        <Route path="/administracia/registracii" element={<Guard id="administracia"><Registracii /></Guard>} />
+        <Route path="/administracia/snimki" element={<Guard id="administracia"><Snimki /></Guard>} />
+        <Route path="/administracia/uchilishte" element={<Guard id="administracia"><Uchilishte /></Guard>} />
+        <Route path="/administracia/obrazec1" element={<Guard id="administracia"><Obrazec1 /></Guard>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
