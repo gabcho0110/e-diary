@@ -151,12 +151,18 @@ body {
   .dn-link { @apply text-[#2b6ca3] hover:underline; }
 }
 
-/* Grade pill colours follow the Bulgarian convention: higher = better. */
-.g2 { background: #fde8e8; color: #b42318; }
-.g3 { background: #fdf0e3; color: #b25e09; }
-.g4 { background: #fdf7e0; color: #8a6d05; }
-.g5 { background: #e6f4ea; color: #1f7a45; }
-.g6 { background: #dff0fb; color: #10618f; }
+/* Grade pill colours follow the Bulgarian convention: higher = better.
+   Плътни, ярки цветове — 2 е силно червено, 6 е наситено зелено. */
+.g2 { background: #e6453a; color: #fff; }
+.g3 { background: #f2790f; color: #fff; }
+.g4 { background: #f5b400; color: #6b4a00; }
+.g5 { background: #7ac143; color: #fff; }
+.g6 { background: #189e57; color: #fff; }
+
+/* Броячите в левия панел на класната книга — меки, за да не се състезават
+   с оценките, които вече са ярки. */
+.cnt1 { background: #e6f4ea; color: #1f7a45; }
+.cnt2 { background: #dff0fb; color: #10618f; }
 
 /* Богат текстов редактор (contenteditable) — placeholder, когато е празен. */
 .rich-editor:empty::before {

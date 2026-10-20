@@ -123,7 +123,7 @@ export function GradePill({ value, title }: { value: number | string; title?: st
   return (
     <span
       title={title}
-      className={`inline-grid h-7 min-w-[28px] place-items-center rounded-md px-1.5 text-sm font-bold ${cls}`}
+      className={`inline-grid h-[26px] min-w-[30px] place-items-center rounded-[2px] px-2 text-[13.5px] font-bold leading-none ${cls}`}
     >
       {value}
     </span>

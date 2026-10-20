@@ -282,6 +282,66 @@ function EditGradeModal({ grade, onClose }: { grade: Grade | null; onClose: () =
   )
 }
 
+// ── Панел с подробности за оценка (появява се под реда на ученика) ───────────
+function GradeDetail({
+  grade, onClose, onEdit,
+}: { grade: Grade; onClose: () => void; onEdit: () => void }) {
+  const { subjectName, userName, isStaff, deleteGrade } = useApp()
+  const created = (grade.createdAt ?? '').replace('T', ' ').slice(0, 19)
+
+  return (
+    <div className="relative border-t border-ink-100 bg-[#fbfcfd] py-2 pl-3 pr-3 text-[12.5px] leading-[1.62] text-ink-700">
+      <p className="text-[13px] font-bold text-ink-900">
+        Оценка: {grade.value.toFixed(2)}
+        <Icon name="calendar" size={12} className="mx-1.5 inline align-[-1px] text-ink-400" />
+        {formatDate(grade.date)}
+        {grade.draft && <span className="ml-2 rounded-[2px] bg-[#fdf0e3] px-1.5 py-0.5 text-[11px] font-bold text-[#b25e09]">чернова</span>}
+      </p>
+      <p><span className="italic">Тип:</span> {grade.type}</p>
+      <p><span className="italic">Предмет:</span> {subjectName(grade.subjectId)}</p>
+      <p>
+        <span className="italic">Въведена от:</span>{' '}
+        <Icon name="user" size={12} className="mx-1 inline align-[-1px] text-[#2b6ca3]" />
+        <span className="text-[#2b6ca3]">{userName(grade.teacherId)}</span>
+        <span className="mx-1.5 text-ink-300">/</span>
+        <Icon name="clock" size={12} className="mr-1 inline align-[-1px] text-ink-400" />
+        {created || '—'}
+      </p>
+      {grade.comment && <p><span className="italic">Коментар:</span> {grade.comment}</p>}
+
+      <div className="absolute right-3 top-2 flex items-center gap-1.5">
+        {isStaff && (
+          <>
+            <button
+              onClick={onEdit}
+              className="rounded-[2px] border border-ink-200 bg-white px-2 py-1 text-[12px] font-semibold text-ink-600 hover:bg-ink-50"
+            >
+              Редактирай
+            </button>
+            <button
+              onClick={() => {
+                if (!window.confirm('Да се изтрие ли тази оценка?')) return
+                deleteGrade(grade.id)
+                onClose()
+              }}
+              className="inline-flex items-center gap-1 rounded-[2px] bg-[#e7505a] px-2 py-1 text-[12px] font-semibold text-white hover:brightness-95"
+            >
+              <Icon name="close" size={12} /> Изтрий
+            </button>
+          </>
+        )}
+        <button
+          onClick={onClose}
+          title="Затвори"
+          className="grid h-6 w-6 place-items-center rounded-[2px] text-ink-400 hover:bg-ink-100 hover:text-ink-700"
+        >
+          <Icon name="close" size={13} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Таб: Оценки (класна книга) ───────────────────────────────────────────────
 /** Оценки, които не са „текущи" — срочни, годишни, изпити за ниво. */
 const NON_CURRENT: GradeType[] = [
@@ -303,6 +363,7 @@ export function GradebookTab({
   const { db, subjectName, user, isAdmin, isStaff, deleteGrade } = useApp()
   const [adding, setAdding] = useState(false)
   const [edit, setEdit] = useState<Grade | null>(null)
+  const [detail, setDetail] = useState<Grade | null>(null)
   const [showDrafts, setShowDrafts] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
   const [picked, setPicked] = useState<Record<string, boolean>>({})
@@ -351,7 +412,6 @@ export function GradebookTab({
 
   const teacher = db.users.find((u) => u.subjectIds?.includes(subjectId) && (isAdmin || u.id === user?.id))
     ?? db.users.find((u) => u.subjectIds?.includes(subjectId))
-  const homeroom = db.users.find((u) => u.id === klass.homeroomTeacherId)
   const deputies = db.users.filter(
     (u) => u.subjectIds?.includes(subjectId) && u.id !== teacher?.id && (u.roles.includes('teacher') || u.roles.includes('class_teacher')),
   ).slice(0, 2)
@@ -371,12 +431,20 @@ export function GradebookTab({
       <div className="flex flex-wrap items-center gap-1">
         {list.map((g) => {
           const tip = `${g.type} · ${formatDate(g.date)}${g.draft ? ' · чернова' : ''}`
-          const pill = <span className={g.draft ? 'opacity-50' : ''}><GradePill value={g.value} /></span>
-          // родител и ученик виждат оценките, но не могат да ги редактират
-          return isStaff ? (
-            <button key={g.id} onClick={() => setEdit(g)} title={tip}>{pill}</button>
-          ) : (
-            <span key={g.id} title={tip}>{pill}</span>
+          const pill = <span className={g.draft ? 'opacity-60' : ''}><GradePill value={g.value} /></span>
+          // клик върху оценката отваря панела с подробности под реда на ученика
+          return (
+            <button
+              key={g.id}
+              type="button"
+              onClick={() => setDetail((d) => (d?.id === g.id ? null : g))}
+              title={tip}
+              className={`rounded-[2px] transition hover:brightness-110 ${
+                detail?.id === g.id ? 'ring-2 ring-[#337ab7] ring-offset-1' : ''
+              }`}
+            >
+              {pill}
+            </button>
           )
         })}
         {showAvg && av !== null && <span className="text-[11px] text-ink-400">({av.toFixed(2)})</span>}
@@ -386,35 +454,6 @@ export function GradebookTab({
 
   return (
     <>
-      {/* лента на паралелката + бърз избор на предмет */}
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-ink-200 bg-white px-3.5 py-2.5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-600 text-[11px] font-bold text-white">
-            {klass.grade}{klass.letter}
-          </span>
-          <span className="truncate text-[13px] font-semibold text-ink-800">
-            {klass.name}
-            {homeroom && <> — {homeroom.firstName} {homeroom.lastName} <span className="font-normal text-ink-500">(класен)</span></>}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {subjects.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => onSelectSubject(s.id)}
-              title={s.name}
-              className={`rounded-md border px-2 py-1 text-[11px] font-bold transition ${
-                s.id === subjectId
-                  ? 'border-brand-500 bg-brand-50 text-brand-800'
-                  : 'border-ink-200 bg-white text-ink-500 hover:border-ink-300 hover:text-ink-700'
-              }`}
-            >
-              {s.short}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* действия */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {isStaff && (
@@ -475,8 +514,8 @@ export function GradebookTab({
                 }`}
               >
                 <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                <span className="g5 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold">{c.t1}</span>
-                <span className="g6 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold">{c.t2}</span>
+                <span className="cnt1 shrink-0 rounded-[2px] px-1.5 py-0.5 text-[11px] font-bold">{c.t1}</span>
+                <span className="cnt2 shrink-0 rounded-[2px] px-1.5 py-0.5 text-[11px] font-bold">{c.t2}</span>
               </button>
             )
           })}
@@ -518,9 +557,10 @@ export function GradebookTab({
                 {students.map((s) => {
                   const isPicked = !!picked[s.id]
                   const left = s.status !== 'активен'
+                  const openGrade = detail && detail.studentId === s.id ? detail : null
                   return (
+                    <Fragment key={s.id}>
                     <tr
-                      key={s.id}
                       className={`${left ? 'bg-[#fde8e8]/70' : isPicked ? 'bg-brand-50/60' : ''} hover:bg-ink-50/60`}
                     >
                       <td className="td">
@@ -555,6 +595,19 @@ export function GradebookTab({
                         {gradeCell(cell(s.id, 1, 'god'), false)}
                       </td>
                     </tr>
+
+                    {openGrade && (
+                      <tr>
+                        <td colSpan={7} className="p-0">
+                          <GradeDetail
+                            grade={openGrade}
+                            onClose={() => setDetail(null)}
+                            onEdit={() => setEdit(openGrade)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -582,7 +635,7 @@ export function GradebookTab({
               onBack={() => setAdding(false)}
             />
           )}
-          <EditGradeModal grade={edit} onClose={() => setEdit(null)} />
+          <EditGradeModal grade={edit} onClose={() => { setEdit(null); setDetail(null) }} />
         </>
       )}
     </>

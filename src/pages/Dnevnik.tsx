@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
-import { Badge, EmptyState, Icon, PageHeader, Select } from '../components/ui'
+import { Badge, EmptyState, Icon, PageHeader } from '../components/ui'
 import { classHeaderTitle, personShort, shortClassName } from '../lib/classes'
 import { GradebookTab } from './dnevnik/Gradebook'
 import { AbsencesTab } from './dnevnik/Absences'
@@ -129,13 +129,6 @@ export default function Dnevnik() {
             : 'Оценки, отсъствия, отзиви, разписание, теми, домашни, контролни, санкции и изпити по паралелки.'
         }
         icon="book"
-        actions={
-          <Select value={classId} onChange={(e) => setView({ klass: e.target.value, subject: '' })} className="w-auto min-w-[150px]">
-            {myClasses.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}{c.profile ? ` — ${c.profile}` : ''}</option>
-            ))}
-          </Select>
-        }
       />
 
       {klass && (
