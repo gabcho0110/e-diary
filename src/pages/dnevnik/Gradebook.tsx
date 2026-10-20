@@ -410,11 +410,26 @@ export function GradebookTab({
     return { t1: events(1), t2: events(2) }
   }
 
-  const teacher = db.users.find((u) => u.subjectIds?.includes(subjectId) && (isAdmin || u.id === user?.id))
-    ?? db.users.find((u) => u.subjectIds?.includes(subjectId))
-  const deputies = db.users.filter(
-    (u) => u.subjectIds?.includes(subjectId) && u.id !== teacher?.id && (u.roles.includes('teacher') || u.roles.includes('class_teacher')),
-  ).slice(0, 2)
+  /*
+    Истинският учител по предмета — този, който е назначен в паралелката
+    („Администрация → Паралелки → Предмети и учители"). Преди тук се взимаше
+    първият учител в базата, който преподава предмета, и в паралелката пишеше
+    чуждо име. Резервно: разписанието, после никой.
+  */
+  const assignedId =
+    klass.plan?.find((p) => p.subjectId === subjectId)?.teacherId ||
+    db.schedule.find((s) => s.classId === classId && s.subjectId === subjectId)?.teacherId ||
+    ''
+  const teacher = assignedId ? db.users.find((u) => u.id === assignedId) : undefined
+  /*
+    „Заместители" са вторите учители по СЪЩИЯ предмет в ТАЗИ паралелка (два
+    реда в „Предмети и учители", напр. разпределени по групи). Преди тук се
+    показваха произволни учители на предмета от цялото училище.
+  */
+  const deputies = (klass.plan ?? [])
+    .filter((p) => p.subjectId === subjectId && p.teacherId && p.teacherId !== assignedId)
+    .map((p) => db.users.find((u) => u.id === p.teacherId))
+    .filter((u): u is NonNullable<typeof u> => !!u)
 
   const pickedIds = Object.entries(picked).filter(([, v]) => v).map(([k]) => k)
   const removePicked = () => {

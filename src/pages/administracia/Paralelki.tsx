@@ -53,9 +53,14 @@ function emptyRow(): PlanDraft {
   }
 }
 
+/**
+ * Редовете идват само от запазения план. Нова паралелка започва с **нула**
+ * предмета — учителят/администраторът ги добавя сам с „Добави учебен
+ * предмет". Празни редове не се показват, за да не се създава впечатление,
+ * че предметите са зададени.
+ */
 function draftFrom(k: Klass): PlanDraft[] {
   const rows = k.plan ?? []
-  if (!rows.length) return [emptyRow(), emptyRow(), emptyRow()]
   return rows.map((r, i) => ({
     key: `r${i}${r.subjectId}${r.teacherId}`,
     subjectId: r.subjectId,
@@ -73,7 +78,7 @@ function draftFrom(k: Klass): PlanDraft[] {
 function ClassForm({
   editing, preset, onClose,
 }: { editing?: Klass; preset?: 'ifo'; onClose: () => void }) {
-  const { db, update } = useApp()
+  const { db, update, subjectName } = useApp()
   const teachers = useMemo(
     () => db.users.filter((u) => u.roles.some((r) => TEACHER_ROLES.includes(r))),
     [db.users],
@@ -82,6 +87,15 @@ function ClassForm({
     () => [...db.subjects].sort((a, b) => a.name.localeCompare(b.name, 'bg')),
     [db.subjects],
   )
+
+  /**
+   * В списъка с учители за даден ред попадат само тези, на които предметът е
+   * зададен в профила („Администрация → Потребители → Роля → Предмети").
+   * Иначе всеки ред предлагаше всички учители и лесно се избираше човек,
+   * който не преподава предмета.
+   */
+  const teachersFor = (subjectId: string) =>
+    subjectId ? teachers.filter((t) => (t.subjectIds ?? []).includes(subjectId)) : []
 
   const [tab, setTab] = useState<'main' | 'plan'>('main')
   const [err, setErr] = useState('')
@@ -95,10 +109,17 @@ function ClassForm({
   const [dayOrg, setDayOrg] = useState(editing?.dayOrg ?? '')
   const [prepKind, setPrepKind] = useState(editing?.prepKind ?? (preset === 'ifo' ? 'Непрофилирана' : 'Непрофилирана'))
   const [shift, setShift] = useState<1 | 2>(editing?.shift ?? 1)
-  const [rows, setRows] = useState<PlanDraft[]>(editing ? draftFrom(editing) : [emptyRow(), emptyRow(), emptyRow()])
+  const [rows, setRows] = useState<PlanDraft[]>(editing ? draftFrom(editing) : [])
   const [quick, setQuick] = useState<number | null>(null)
 
   const name = `${gradeLabel}${letter}`
+
+  /** Редовете, които ще влязат в паралелката — за обобщението под таблицата. */
+  const filled = rows.filter((r) => r.subjectId)
+  const teacherNameOf = (id: string) => {
+    const t = teachers.find((x) => x.id === id)
+    return t ? `${t.firstName} ${t.lastName}`.trim() : ''
+  }
 
   const patchRow = (i: number, patch: Partial<PlanDraft>) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
@@ -107,6 +128,11 @@ function ClassForm({
     if (!gradeLabel || !letter) { setErr('Попълнете клас и паралелка.'); setTab('main'); return }
     if (db.classes.some((c) => c.name === name && c.id !== editing?.id)) {
       setErr(`Паралелка ${name} вече съществува.`); setTab('main'); return
+    }
+    const noTeacher = rows.filter((r) => r.subjectId && !r.teacherId)
+    if (noTeacher.length) {
+      setErr(`Изберете учител за: ${noTeacher.map((r) => subjectName(r.subjectId)).join(', ')}.`)
+      setTab('plan'); return
     }
     const plan: ClassSubjectPlanRow[] = rows
       .filter((r) => r.subjectId)
@@ -168,7 +194,7 @@ function ClassForm({
 
     if (again) {
       setErr('')
-      setRows([emptyRow(), emptyRow(), emptyRow()])
+      setRows([])
       setHomeroom('')
       setTab('main')
       return
@@ -282,13 +308,25 @@ function ClassForm({
                     </tr>
                   </thead>
                   <tbody>
+                    {!rows.length && (
+                      <tr>
+                        <td colSpan={9} className="border border-[#dfe5ea] px-3 py-6 text-center text-[12.5px] text-ink-500">
+                          Няма добавени предмети. Натиснете „Добави учебен предмет“ и изберете предмет и учител.
+                        </td>
+                      </tr>
+                    )}
                     {rows.map((r, i) => (
                       <tr key={r.key} className="align-top">
                         <td className="border border-[#dfe5ea] px-2 py-1.5 text-ink-500">{i + 1}</td>
                         <td className="border border-[#dfe5ea] px-1 py-1" style={{ minWidth: 168 }}>
                           <ASelect
                             value={r.subjectId}
-                            onChange={(e) => patchRow(i, { subjectId: e.target.value })}
+                            onChange={(e) => {
+                              const sid = e.target.value
+                              // учителят остава само ако преподава новия предмет
+                              const stillOk = (teachers.find((t) => t.id === r.teacherId)?.subjectIds ?? []).includes(sid)
+                              patchRow(i, { subjectId: sid, teacherId: stillOk ? r.teacherId : '' })
+                            }}
                             className={`!py-1 !text-[12px] ${!r.subjectId ? '!border-[#e7505a]' : ''}`}
                           >
                             <option value="">Изберете</option>
@@ -299,17 +337,29 @@ function ClassForm({
                           <div className="flex items-center gap-1">
                             <ASelect
                               value={r.teacherId}
+                              disabled={!r.subjectId}
                               onChange={(e) => patchRow(i, { teacherId: e.target.value })}
-                              className={`!py-1 !text-[12px] ${!r.teacherId ? '!border-[#e7505a]' : ''}`}
+                              className={`!py-1 !text-[12px] ${
+                                !r.subjectId ? '!bg-[#f2f5f7] !text-ink-400' : !r.teacherId ? '!border-[#e7505a]' : ''
+                              }`}
                             >
-                              <option value="">Изберете</option>
-                              {teachers.map((t) => <option key={t.id} value={t.id}>{t.firstName} {t.lastName}</option>)}
+                              <option value="">
+                                {!r.subjectId
+                                  ? 'Първо изберете предмет'
+                                  : teachersFor(r.subjectId).length
+                                    ? 'Изберете'
+                                    : 'Няма учител по предмета'}
+                              </option>
+                              {teachersFor(r.subjectId).map((t) => (
+                                <option key={t.id} value={t.id}>{t.firstName} {t.lastName}</option>
+                              ))}
                             </ASelect>
                             <button
                               type="button"
-                              title="Нов учител"
+                              title="Нов учител по този предмет"
+                              disabled={!r.subjectId}
                               onClick={() => setQuick(i)}
-                              className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[3px] text-white"
+                              className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[3px] text-white disabled:opacity-40"
                               style={{ background: '#36c6d3' }}
                             >
                               <Icon name="plus" size={13} strokeWidth={2.6} />
@@ -365,6 +415,28 @@ function ClassForm({
               <p className="mt-3 text-[11.5px] text-ink-400">
                 Учителите, избрани тук, получават паралелката в модул „Дневник" и предметите в профила си.
               </p>
+
+              {/*
+                Обобщение точно както ще се вижда в паралелката:
+                    Английски език — Симеон Кръстев
+                Учителят е истинският, зададен в реда по-горе.
+              */}
+              {filled.length > 0 && (
+                <div className="mt-4 overflow-hidden rounded-[3px] border border-[#e3e9ee] bg-[#f5f7f9]">
+                  {filled.map((r) => (
+                    <div
+                      key={r.key}
+                      className="flex flex-wrap items-baseline gap-1.5 border-b border-[#e3e9ee] px-3 py-1.5 text-[13px] last:border-b-0"
+                    >
+                      <b className="text-ink-900">{subjectName(r.subjectId)}</b>
+                      <span className="text-ink-400">—</span>
+                      <span className={r.teacherId ? 'text-ink-700' : 'text-[#b42318]'}>
+                        {r.teacherId ? teacherNameOf(r.teacherId) : 'няма избран учител'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -373,6 +445,7 @@ function ClassForm({
       {quick !== null && (
         <QuickTeacher
           subjects={subjects}
+          presetSubject={rows[quick]?.subjectId}
           onClose={() => setQuick(null)}
           onCreate={(u) => {
             if (quick === null) return
@@ -387,16 +460,19 @@ function ClassForm({
 
 /** Бързо добавяне на учител от реда „Предмети и учители". */
 function QuickTeacher({
-  subjects, onClose, onCreate,
+  subjects, presetSubject, onClose, onCreate,
 }: {
   subjects: { id: string; name: string }[]
+  presetSubject?: string
   onClose: () => void
   onCreate: (u: User) => void
 }) {
   const { update, db } = useApp()
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
-  const [subjectIds, setSubjectIds] = useState<string[]>([])
+  // предметът от реда е избран предварително — новият учител веднага става
+  // кандидат за него
+  const [subjectIds, setSubjectIds] = useState<string[]>(presetSubject ? [presetSubject] : [])
   const [err, setErr] = useState('')
 
   const create = () => {
