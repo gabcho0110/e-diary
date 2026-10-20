@@ -120,33 +120,29 @@ export default function Dnevnik() {
         Заглавието НЕ е „Дневник", а отворената паралелка заедно с класния
         ръководител — както е в референтния дневник:
             8В - Александър Г. Тодоров (класен)
+        Подзаглавие НЯМА: броят ученици, предмети, профилът и смяната се
+        виждат в лентата отдолу и не се повтарят два пъти.
       */}
       <PageHeader
         title={klass ? classHeaderTitle(klass, db.users, user?.id) : 'Дневник'}
-        subtitle={
-          klass
-            ? `${klass.studentIds.length} ученика · ${classSubjects.length} предмета${klass.profile ? ` · профил ${klass.profile}` : ''} · ${klass.shift} смяна`
-            : 'Оценки, отсъствия, отзиви, разписание, теми, домашни, контролни, санкции и изпити по паралелки.'
-        }
         icon="book"
       />
 
       {klass && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-ink-500">
+        <div className="mb-4 flex flex-wrap items-center gap-3 border-b border-[var(--dn-line)] pb-2.5 text-[13px] text-ink-500">
           <Badge tone="brand">{shortClassName(klass.name)}</Badge>
           <span>
             Класен ръководител:{' '}
-            <b className="text-ink-700">{personShort(db.users.find((u) => u.id === klass.homeroomTeacherId)) || '—'}</b>
+            <b className="text-ink-800">{personShort(db.users.find((u) => u.id === klass.homeroomTeacherId)) || '—'}</b>
           </span>
-          {klass.homeroomTeacherId === user?.id && (
+          {klass.profile && (
             <>
               <span className="h-4 w-px bg-ink-200" />
-              <Badge tone="ok">това е вашият клас</Badge>
+              <span>Профил: <b className="text-ink-800">{klass.profile}</b></span>
             </>
           )}
-          {klass.profile && <><span className="h-4 w-px bg-ink-200" /><span>Профил: <b className="text-ink-700">{klass.profile}</b></span></>}
           <span className="h-4 w-px bg-ink-200" />
-          <span>Смяна: <b className="text-ink-700">{klass.shift}</b></span>
+          <span>Смяна: <b className="text-ink-800">{klass.shift}</b></span>
         </div>
       )}
 
