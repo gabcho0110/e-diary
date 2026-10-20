@@ -102,6 +102,18 @@ function DnevnikSubmenu({ onNavigate }: { onNavigate: () => void }) {
   const isFamily = !!user?.roles.some((r) => r === 'parent' || r === 'student')
   const child = isFamily ? myChildren[0] : undefined
 
+  /** Класът, на който потребителят е класен ръководител — най-важният в менюто. */
+  const homeroom = myClasses.find((c) => c.homeroomTeacherId === user?.id)
+
+  /*
+    Собственият клас се показва най-горе като „11А (мой клас)" и НЕ се
+    повтаря в мрежата отдолу — както е в референтния дневник.
+  */
+  const otherClasses = useMemo(
+    () => (homeroom ? myClasses.filter((c) => c.id !== homeroom.id) : myClasses),
+    [myClasses, homeroom],
+  )
+
   const homeroomIds = useMemo(
     () => new Set(myClasses.filter((c) => c.homeroomTeacherId === user?.id).map((c) => c.id)),
     [myClasses, user],
@@ -111,6 +123,23 @@ function DnevnikSubmenu({ onNavigate }: { onNavigate: () => void }) {
 
   return (
     <div className="mb-1 ml-[13px] border-l border-white/20 pl-1.5">
+      {homeroom && (
+        <button
+          onClick={() => go(`/dnevnik?class=${homeroom.id}`)}
+          title={`${shortClassName(homeroom.name)} (мой клас)`}
+          className={`mb-1 flex w-full items-center gap-2 rounded-[3px] py-[7px] pl-1 pr-2 text-left text-[13px] font-bold transition ${
+            onDnevnik && activeClass === homeroom.id
+              ? 'bg-white/25 text-white'
+              : 'text-white hover:bg-white/10'
+          }`}
+        >
+          <Icon name="users" size={16} className="shrink-0 opacity-85" />
+          <span className="min-w-0 flex-1 truncate">
+            {shortClassName(homeroom.name)} <span className="font-semibold">(мой клас)</span>
+          </span>
+        </button>
+      )}
+
       {child && (
         <div className="mb-1 flex items-center gap-2 rounded-[3px] px-2 py-[6px] text-[12.5px] font-semibold text-white">
           <Icon name="person" size={14} className="shrink-0 opacity-70" />
@@ -127,14 +156,18 @@ function DnevnikSubmenu({ onNavigate }: { onNavigate: () => void }) {
         onClick={() => go('/razpisanie')}
       />
 
-      <div className="my-1.5 h-px bg-white/15" />
+      {otherClasses.length > 0 && (
+        <>
+          <div className="my-1.5 h-px bg-white/15" />
 
-      <ClassGrid
-        classes={myClasses}
-        activeId={onDnevnik ? activeClass : ''}
-        homeroomIds={homeroomIds}
-        onPick={(id) => go(`/dnevnik?class=${id}`)}
-      />
+          <ClassGrid
+            classes={otherClasses}
+            activeId={onDnevnik ? activeClass : ''}
+            homeroomIds={homeroomIds}
+            onPick={(id) => go(`/dnevnik?class=${id}`)}
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -205,7 +238,7 @@ function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCollapsed
   return (
     <aside
       className={`flex shrink-0 flex-col border-r border-[#2e5f85] transition-[width] duration-200 ${
-        collapsed ? 'w-[68px]' : 'w-[248px]'
+        collapsed ? 'w-[68px]' : 'w-[276px]'
       }`}
       style={{ background: SIDEBAR_BG }}
     >
