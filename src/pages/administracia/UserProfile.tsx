@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useApp } from '../../store/AppContext'
 import { ROLE_MAP, isAdmin, isStaff, isTeacherLike } from '../../lib/roles'
 import type { RoleId, Student, User } from '../../lib/types'
@@ -34,15 +35,31 @@ function InfoRow({ label, children, wide }: { label: string; children: ReactNode
   )
 }
 
-/** Малък бадж за паралелка — икона на мрежа + име. */
-function ClassBadge({ name }: { name: string }) {
+/**
+ * Малък бадж за паралелка — икона на мрежа + име.
+ *
+ * С `id` баджът е връзка: кликът отваря детайлите на паралелката в
+ * „Администрация → Паралелки" (`?class=`), а не само текстов етикет.
+ */
+function ClassBadge({ id, name }: { id?: string; name: string }) {
   const label = (name ?? '').trim()
   if (!label || label === '—') return <span className="mr-1.5 text-ink-300">—</span>
-  return (
-    <span className="mr-1.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-[#337ab7]">
+  const body = (
+    <>
       <Icon name="grid" size={13} className="text-[#337ab7]" />
       {label}
-    </span>
+    </>
+  )
+  const cls = 'mr-1.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-[#337ab7]'
+  if (!id) return <span className={cls}>{body}</span>
+  return (
+    <Link
+      to={`/administracia/paralelki?class=${id}`}
+      title={`Информация за паралелка ${label}`}
+      className={`${cls} rounded-[2px] underline-offset-2 hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[#337ab7]`}
+    >
+      {body}
+    </Link>
   )
 }
 
@@ -480,7 +497,7 @@ export default function UserProfile({
             {[u.address, u.city].filter(Boolean).join(', ') || <Dash />}
           </InfoRow>
           <InfoRow label="Класен ръководител">
-            {homerooms.length ? homerooms.map((k) => <ClassBadge key={k.id} name={klassName(k.id)} />) : <Dash />}
+            {homerooms.length ? homerooms.map((k) => <ClassBadge key={k.id} id={k.id} name={klassName(k.id)} />) : <Dash />}
           </InfoRow>
           {children.length > 0 && (
             <InfoRow label="Данни за деца">
@@ -663,7 +680,7 @@ export default function UserProfile({
         <div className="max-w-[820px] border border-[#d7dee4] bg-white px-4 py-3">
           <InfoRow label="Номер по образец"><Dash>{u.sampleNo}</Dash></InfoRow>
           <InfoRow label="Класен ръководител">
-            {homerooms.length ? homerooms.map((k) => <ClassBadge key={k.id} name={klassName(k.id)} />) : <Dash />}
+            {homerooms.length ? homerooms.map((k) => <ClassBadge key={k.id} id={k.id} name={klassName(k.id)} />) : <Dash />}
           </InfoRow>
           <InfoRow label="Преподава на">
             <span className="inline-flex items-center gap-1.5">
