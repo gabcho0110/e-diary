@@ -1,31 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
-import { ROLE_MAP, ROLES } from '../lib/roles'
+import { ROLES } from '../lib/roles'
 import type { RoleId } from '../lib/types'
 import { Badge, Field, Icon, Input, Select } from '../components/ui'
 
-const DEMO_ACCOUNTS: { username: string; role: RoleId }[] = [
-  { username: 'admin', role: 'sysadmin' },
-  { username: 'direktor', role: 'director' },
-  { username: 'zam', role: 'deputy' },
-  { username: 'ucitel', role: 'teacher' },
-  { username: 'klasen', role: 'class_teacher' },
-  { username: 'vazpitatel', role: 'educator' },
-  { username: 'resursen', role: 'resource_teacher' },
-  { username: 'psiholog', role: 'psychologist' },
-  { username: 'logoped', role: 'speech_therapist' },
-  { username: 'medsestra', role: 'nurse' },
-  { username: 'bibliotekar', role: 'librarian' },
-  { username: 'schetovoditel', role: 'accountant' },
-  { username: 'sekretar', role: 'secretary' },
-  { username: 'roditel', role: 'parent' },
-  { username: 'ucenik', role: 'student' },
-  { username: 'gost', role: 'guest' },
-]
-
 export default function Login() {
-  const { login, loginAs, db, mode } = useApp()
+  const { login, db, mode } = useApp()
   const navigate = useNavigate()
   const [tab, setTab] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
@@ -61,14 +42,6 @@ export default function Login() {
     const res = register(reg)
     if (res.ok) navigate('/')
     else setError(res.error ?? 'Регистрацията не успя.')
-  }
-
-  const quick = (u: string) => {
-    const found = db.users.find((x) => x.username === u)
-    if (found) {
-      loginAs(found.id)
-      navigate('/')
-    }
   }
 
   return (
@@ -161,7 +134,7 @@ export default function Login() {
           {tab === 'login' ? (
             <form onSubmit={submit} className="space-y-3.5">
               <Field label="Потребителско име или имейл">
-                <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="напр. ucitel" autoComplete="username" />
+                <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="потребителско име или имейл" autoComplete="username" />
               </Field>
               <Field label="Парола">
                 <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
@@ -213,38 +186,6 @@ export default function Login() {
               </p>
             </form>
           )}
-
-          <div className="my-6 flex items-center gap-3">
-            <span className="h-px flex-1 bg-ink-200" />
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">Демо достъп</span>
-            <span className="h-px flex-1 bg-ink-200" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5">
-            {DEMO_ACCOUNTS.map((a) => (
-              <button
-                key={a.username}
-                onClick={() => quick(a.username)}
-                className="flex items-center gap-2 rounded-lg border border-ink-200 px-2.5 py-2 text-left transition hover:border-brand-300 hover:bg-brand-50/50"
-              >
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-ink-100 text-ink-600">
-                  <Icon name="person" size={13} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12px] font-semibold leading-tight text-ink-800">
-                    {ROLE_MAP[a.role].name}
-                  </span>
-                  <span className="block truncate font-mono text-[10px] leading-tight text-ink-400">{a.username}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <p className="mt-4 text-center text-[11px] text-ink-400">
-            Парола за всички демо профили: <span className="font-mono font-semibold">demo123</span>
-            {' · '}
-            <span className="font-mono">admin</span> → <span className="font-mono">admin123</span>
-          </p>
 
           {mode === 'local' && (
             <div className="mt-4 flex justify-center">

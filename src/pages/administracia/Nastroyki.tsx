@@ -6,7 +6,7 @@ import { AInput, Dash, EmptyRow, FormRow, ListHead, SquareAction, ToolBtn, Toolb
 
 /** „Училище" — данните и настройките на училището. */
 export function Uchilishte() {
-  const { db, update, resetDemo } = useApp()
+  const { db, update } = useApp()
   const s = db.school
 
   return (
@@ -68,17 +68,11 @@ export function Uchilishte() {
           </div>
 
           <div className="rounded border border-[#d7dee4] bg-white p-4">
-            <p className="mb-2 text-[13px] font-bold text-[#3d4a56]">Демо данни</p>
+            <p className="mb-2 text-[13px] font-bold text-[#3d4a56]">Резервно копие</p>
             <p className="mb-3 text-[12px] text-ink-500">
-              Връща училището към първоначалния набор от данни. Всички направени промени ще бъдат загубени.
+              Демонстрационните данни са премахнати — в базата остават само профилите и паралелките,
+              създадени от вас. Архив на предишното състояние се пази във файл в папката на проекта.
             </p>
-            <button
-              onClick={() => { if (confirm('Да се върнат ли демо данните? Промените ще бъдат загубени.')) resetDemo() }}
-              className="rounded-[3px] px-2.5 py-1.5 text-[12.5px] font-semibold text-white"
-              style={{ background: '#e7505a' }}
-            >
-              Върни демо данните
-            </button>
           </div>
         </div>
       </div>

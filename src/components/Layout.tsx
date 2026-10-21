@@ -384,14 +384,9 @@ function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCollapsed
 }
 
 function UserMenu() {
-  const { db, user, logout, loginAs } = useApp()
+  const { user, logout } = useApp()
   const [open, setOpen] = useState(false)
   if (!user) return null
-
-  const demoUsers = db.users.filter((u) =>
-    ['admin', 'direktor', 'zam', 'ucitel', 'klasen', 'roditel', 'ucenik', 'psiholog', 'logoped',
-      'schetovoditel', 'sekretar', 'bibliotekar', 'medsestra', 'vazpitatel', 'resursen', 'gost'].includes(u.username),
-  )
 
   return (
     <div className="relative">
@@ -421,26 +416,6 @@ function UserMenu() {
                 </p>
                 <p className="truncate text-xs text-ink-500">{user.email}</p>
               </div>
-            </div>
-
-            <div className="my-1 border-t border-ink-100" />
-            <p className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-ink-400">
-              Влез като (демо роли)
-            </p>
-            <div className="max-h-[260px] overflow-y-auto">
-              {demoUsers.map((u) => (
-                <button
-                  key={u.id}
-                  onClick={() => { loginAs(u.id); setOpen(false) }}
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] hover:bg-ink-50 ${
-                    u.id === user.id ? 'bg-brand-50 font-semibold text-brand-800' : 'text-ink-700'
-                  }`}
-                >
-                  <Avatar name={`${u.firstName} ${u.lastName}`} size={24} />
-                  <span className="min-w-0 flex-1 truncate">{ROLE_MAP[u.roles[0]]?.name}</span>
-                  <span className="shrink-0 font-mono text-[10px] text-ink-400">{u.username}</span>
-                </button>
-              ))}
             </div>
 
             <div className="my-1 border-t border-ink-100" />
