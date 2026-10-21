@@ -341,9 +341,14 @@ function ScheduleWizard({ row, onClose }: { row?: SchedRow; onClose: () => void 
         }
       >
         <div className="mx-auto max-w-[720px] rounded-[3px] border border-ink-200 bg-white px-5 py-4">
-          <FormRow label="Паралелка" required>
+          <FormRow
+            label="Паралелка"
+            required
+            hint={row ? 'Паралелката не се сменя при редакция — създайте ново разписание.' : undefined}
+          >
             <ASelect
               value={head.classId}
+              disabled={!!row}
               onChange={(e) => setHead({ ...head, classId: e.target.value })}
             >
               <option value="">— Изберете паралелка —</option>
