@@ -286,9 +286,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!u.active) return { ok: false, error: 'Профилът е деактивиран. Обърнете се към администратора.' }
       setUser(u)
       storage.session.set(u.id)
+      /*
+       * Всяко успешно влизане се записва в дневника на действията — показва се
+       * в профила на потребителя („Още → Влизания"). Датата се сглобява
+       * ръчно, защото `toISOString()` измества деня при GMT+3.
+       */
+      const n = new Date()
+      const p = (x: number) => String(x).padStart(2, '0')
+      update((d) => {
+        d.audit = [{
+          id: `aud_${Date.now()}`,
+          userId: u.id,
+          action: 'Вход в системата',
+          target: 'Дневник',
+          date: `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}T${p(n.getHours())}:${p(n.getMinutes())}`,
+        }, ...d.audit].slice(0, 500)
+      })
       return { ok: true }
     },
-    [db],
+    [db, update],
   )
 
   const loginAs = useCallback(

@@ -71,6 +71,10 @@ export interface User {
   externalLecturer?: boolean
   /** номер по образец */
   sampleNo?: string
+  /** „Допълнителни данни" в профила — работещ пенсионер */
+  retired?: boolean
+  /** „Допълнителни данни" в профила — пътуващ от друго населено място */
+  commuter?: boolean
 }
 
 export interface School {

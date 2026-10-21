@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../../store/AppContext'
 import { ROLES, ROLE_MAP } from '../../lib/roles'
 import type { RoleId, User } from '../../lib/types'
 import { Avatar, Icon, Input, PageHeader, Table } from '../../components/ui'
 import { AddPage, Toggle, WarnBanner } from '../dnevnik/forms'
+import UserProfile from './UserProfile'
 import {
   AInput, ASelect, CheckList, Dash, EmptyRow, FormRow, FormTabs, ListHead, SquareAction, ToolBtn, Toolbar,
 } from './shared'
@@ -400,12 +402,29 @@ function UserForm({ editing, onClose }: { editing?: User; onClose: () => void })
 // ── Списък с потребители ────────────────────────────────────────────────────
 export default function Potrebiteli() {
   const { db, update } = useApp()
+  const [params, setParams] = useSearchParams()
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
   const [roleFilter, setRoleFilter] = useState('')
   const [form, setForm] = useState<{ open: boolean; editing?: User }>({ open: false })
   const [importOpen, setImportOpen] = useState(false)
   const [mergeOpen, setMergeOpen] = useState(false)
+
+  /**
+   * Отвореният профил и разделът в него живеят в адреса — така „Назад" в
+   * браузъра връща към списъка, а връзката може да се сподели.
+   */
+  const setView = (patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(params)
+    Object.entries(patch).forEach(([k, v]) => {
+      if (v === null || v === '') next.delete(k)
+      else next.set(k, v)
+    })
+    setParams(next, { replace: true })
+  }
+
+  const openUser = db.users.find((u) => u.id === params.get('user'))
+  const profileTab = params.get('utab') ?? 'main'
 
   const classOf = (u: User): string => {
     const sids = u.childrenIds ?? (u.studentId ? [u.studentId] : [])
@@ -435,6 +454,23 @@ export default function Potrebiteli() {
   const remove = (u: User) => {
     if (!confirm(`Да се изтрие ли потребителят ${u.firstName} ${u.lastName}?`)) return
     update((d) => { d.users = d.users.filter((x) => x.id !== u.id) })
+  }
+
+  // ── отворен профил ───────────────────────────────────────────────────────
+  if (openUser) {
+    return (
+      <>
+        <UserProfile
+          key={openUser.id}
+          user={openUser}
+          tab={profileTab}
+          onTab={(t) => setView({ utab: t })}
+          onBack={() => setView({ user: null, utab: null })}
+          onEdit={() => setForm({ open: true, editing: openUser })}
+        />
+        {form.open && <UserForm editing={form.editing} onClose={() => setForm({ open: false })} />}
+      </>
+    )
   }
 
   return (
@@ -501,7 +537,11 @@ export default function Potrebiteli() {
         {rows.map((u) => (
           <tr key={u.id} className="hover:bg-[#f6fafd]">
             <td className="td">
-              <button onClick={() => setForm({ open: true, editing: u })} className="flex items-center gap-2 text-left">
+              <button
+                onClick={() => setView({ user: u.id, utab: null })}
+                className="flex items-center gap-2 text-left"
+                title="Отвори профила"
+              >
                 <Avatar name={`${u.firstName} ${u.lastName}`} size={22} />
                 <span className="dn-link font-semibold">{u.firstName}</span>
               </button>
