@@ -496,6 +496,63 @@ export interface ScheduleEntry {
   planName?: string
 }
 
+/**
+ * Дневен режим — колко часа има учебният ден, кога започват и по колко минути
+ * са. „Различни режими" пуска отделна схема за всеки ден от седмицата.
+ */
+export interface RegimeHour {
+  no: number
+  /** „08:00" */
+  start: string
+  /** минути — 40, 45, 60 … */
+  duration: number
+}
+
+export interface DayRegime {
+  id: string
+  name: string
+  different: boolean
+  /** когато `different` е false — една схема за всички дни */
+  hours: RegimeHour[]
+  /** когато `different` е true — по един списък за всеки ден (1 = понеделник) */
+  byDay?: Record<string, RegimeHour[]>
+  createdAt?: string
+}
+
+/**
+ * Занятие — конкретен час на конкретна дата. Разписанието в „Дневник" се строи
+ * по дати (не по шаблон), защото се менят стаи, учители и замествания.
+ */
+export interface Lesson {
+  id: string
+  classId: string
+  /** „2026-10-19" */
+  date: string
+  period: number
+  /** „08:00" и „08:40" */
+  start: string
+  end: string
+  subjectId: string
+  teacherId: string
+  roomId?: string
+  /** „Присъствено" / „Онлайн обучение" */
+  studyKind: string
+  /** „Обща група за цялата паралелка" или име на група */
+  groupLabel?: string
+  regimeId?: string
+  /**
+   * Периодът, за който важи разписанието, в което е този час. Два часа на една
+   * и съща дата могат да живеят в две различни разписания (напр. преди и след
+   * промяна на режима), затова периодът се пази на всеки запис.
+   */
+  validFrom?: string
+  validTo?: string
+  createdById?: string
+  createdAt?: string
+  updatedById?: string
+  updatedAt?: string
+}
+
 export interface Homework {
   id: string
   classId: string
@@ -885,6 +942,10 @@ export interface DB {
   absences: Absence[]
   notes: Note[]
   schedule: ScheduleEntry[]
+  /** дневни режими (Администрация → Дневни режими) */
+  regimes: DayRegime[]
+  /** занятията по дати — седмичното разписание в „Дневник" */
+  lessons: Lesson[]
   homework: Homework[]
   exams: Exam[]
   messages: Message[]

@@ -6,7 +6,7 @@ import type {
   Sanction, ClassNote, SupportPlan, VhkLesson, ClassMeeting,
   CorrectionalExam, EquivalenceExam,
   AbsenceNote, GradeExemption, DeleteRequest, Norm, NormResult, TrainingPlan,
-  CombinedGroup,
+  CombinedGroup, DayRegime, Lesson,
 } from './types'
 
 // ── Детерминиран генератор, за да е стабилен наборът от данни ────────────────
@@ -529,6 +529,44 @@ export function buildDB(): DB {
       })
     }
   })
+
+  // ── Дневни режими ────────────────────────────────────────────────────────
+  // Колко часа има учебният ден и кога започват — оттук разписанието взима
+  // часовете за всеки ден.
+  const regimeHours = (from: string, count: number, duration = 40) => {
+    const out: { no: number; start: string; duration: number }[] = []
+    let [h, m] = from.split(':').map(Number)
+    for (let i = 1; i <= count; i++) {
+      out.push({ no: i, start: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`, duration })
+      m += duration
+      if (m >= 60) { h += Math.floor(m / 60); m %= 60 }
+      // междучасие от 10 минути, както е в повечето училища
+      m += 10
+      if (m >= 60) { h += Math.floor(m / 60); m %= 60 }
+    }
+    return out
+  }
+
+  const regimes: DayRegime[] = [
+    { id: 'rgm_1', name: 'Смяна 1', different: false, hours: regimeHours('08:00', 7), createdAt: '2026-09-01 08:00' },
+    { id: 'rgm_2', name: 'Смяна 2', different: false, hours: regimeHours('13:00', 6), createdAt: '2026-09-01 08:00' },
+    { id: 'rgm_3', name: 'Методиев', different: false, hours: regimeHours('10:00', 1, 40), createdAt: '2026-09-01 08:00' },
+    {
+      id: 'rgm_4', name: 'Първи срок (V–VII клас)', different: false,
+      hours: regimeHours('08:30', 6), createdAt: '2026-09-01 08:00',
+    },
+    {
+      id: 'rgm_5', name: 'Петък — съкратен', different: true,
+      hours: regimeHours('08:00', 7),
+      byDay: {
+        '1': regimeHours('08:00', 7), '2': regimeHours('08:00', 7), '3': regimeHours('08:00', 7),
+        '4': regimeHours('08:00', 7), '5': regimeHours('08:00', 5),
+      },
+      createdAt: '2026-09-01 08:00',
+    },
+  ]
+
+  const lessons: Lesson[] = []
 
   // ── Домашни работи ───────────────────────────────────────────────────────
   const homework: Homework[] = []
@@ -1115,7 +1153,7 @@ export function buildDB(): DB {
   const trainingPlans: TrainingPlan[] = []
 
   return {
-    school, users, subjects, classes, students, grades, absences, notes, schedule,
+    school, users, subjects, classes, students, grades, absences, notes, schedule, regimes, lessons,
     homework, exams, messages, tests, materials, tasks, events, meetings, activities,
     themePlans, fees, rooms, competitions, portfolios, studentProfiles, attestations,
     lessonAbsences, docs: [...docs, ...delovodstvoDocs], virtualRooms, ifoDiaries,

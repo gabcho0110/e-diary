@@ -5,7 +5,7 @@ import type {
   Sanction, ClassNote, SupportPlan, VhkLesson, ClassMeeting,
   CorrectionalExam, EquivalenceExam, AbsenceNote, DeleteRequest, Norm,
   NormResult, TrainingPlan, ThemePlan, ScheduleEntry, AnnualResults,
-  NvoResult, DziResult,
+  NvoResult, DziResult, DayRegime, Lesson,
 } from '../lib/types'
 import { storage, type StorageMode } from '../lib/storage'
 import { MODULES, type ModuleDef } from '../lib/modules'
@@ -197,6 +197,24 @@ interface Ctx {
   deleteScheduleRange: (classId: string, from: string, to: string) => number
   /** копира разписанието на един период върху друг */
   duplicateSchedule: (classId: string, from: string, to: string) => number
+
+  // ── дневни режими ────────────────────────────────────────────────────────
+  /** създава режим и връща id-то му, за да може веднага да се избере */
+  addRegime: (r: Omit<DayRegime, 'id' | 'createdAt'>) => string
+  updateRegime: (id: string, patch: Partial<DayRegime>) => void
+  deleteRegime: (id: string) => void
+
+  // ── разписания по дати (занятия) ─────────────────────────────────────────
+  /** записва един час — по (паралелка, дата, № на часа) няма два едночасови записа */
+  saveLesson: (l: Omit<Lesson, 'id'> & { id?: string }) => void
+  deleteLesson: (id: string) => void
+  /** изтрива цялото разписание на паралелка за периода; връща броя часове */
+  deleteLessonsRange: (classId: string, from: string, to: string) => number
+  /** сменя периода (и режима) на вече създадено разписание */
+  retimeLessons: (
+    classId: string, oldFrom: string, oldTo: string,
+    nextFrom: string, nextTo: string, regimeId?: string,
+  ) => void
 
   updateExam: (id: string, patch: Partial<Exam>) => void
 
@@ -975,6 +993,94 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         update((d) => {
           const i = d.exams.findIndex((e) => e.id === id)
           if (i >= 0) d.exams[i] = { ...d.exams[i], ...patch }
+        }),
+
+      // ── дневни режими ────────────────────────────────────────────────────
+      /*
+       * Режимът е просто схема на учебния ден: колко часа, кога започват и по
+       * колко минути. Разписанието после взима часовете оттук, вместо да ги
+       * смята само — така „Петък — съкратен" наистина има по-малко часове.
+       */
+      addRegime: (r) => {
+        const id = `rgm_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+        update((d) => {
+          d.regimes.push({ ...r, id, createdAt: stampNow() })
+        })
+        return id
+      },
+      updateRegime: (id, patch) =>
+        update((d) => {
+          const i = d.regimes.findIndex((r) => r.id === id)
+          if (i >= 0) d.regimes[i] = { ...d.regimes[i], ...patch }
+        }),
+      deleteRegime: (id) =>
+        update((d) => {
+          d.regimes = d.regimes.filter((r) => r.id !== id)
+          // разписанията, които са го ползвали, остават — само губят връзката
+          d.lessons = d.lessons.map((l) => (l.regimeId === id ? { ...l, regimeId: undefined } : l))
+        }),
+
+      // ── разписания по дати ───────────────────────────────────────────────
+      saveLesson: (l) =>
+        update((d) => {
+          // един час на дата се среща веднъж — вторият запис е редакция
+          const i = l.id
+            ? d.lessons.findIndex((x) => x.id === l.id)
+            : d.lessons.findIndex(
+                (x) => x.classId === l.classId && x.date === l.date && x.period === l.period,
+              )
+          const stamp = stampNow()
+          if (i >= 0) {
+            d.lessons[i] = {
+              ...d.lessons[i],
+              ...l,
+              id: d.lessons[i].id,
+              updatedById: user?.id,
+              updatedAt: stamp,
+            }
+            return
+          }
+          d.lessons.push({
+            ...l,
+            id: `lsn_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            createdById: user?.id,
+            createdAt: stamp,
+          } as Lesson)
+        }),
+      deleteLesson: (id) =>
+        update((d) => { d.lessons = d.lessons.filter((l) => l.id !== id) }),
+
+      deleteLessonsRange: (classId, from, to) => {
+        const doomed = db.lessons.filter(
+          (l) => l.classId === classId && l.date >= from && l.date <= to,
+        )
+        if (!doomed.length) return 0
+        update((d) => {
+          d.lessons = d.lessons.filter(
+            (l) => !(l.classId === classId && l.date >= from && l.date <= to),
+          )
+        })
+        return doomed.length
+      },
+
+      retimeLessons: (classId, oldFrom, oldTo, nextFrom, nextTo, regimeId) =>
+        update((d) => {
+          d.lessons = d.lessons
+            .map((l) =>
+              l.classId === classId && l.validFrom === oldFrom && l.validTo === oldTo
+                ? { ...l, validFrom: nextFrom, validTo: nextTo, regimeId: regimeId ?? l.regimeId }
+                : l,
+            )
+            // часовете извън новия период отпадат — иначе остават „сираци"
+            .filter(
+              (l) =>
+                !(
+                  l.classId === classId &&
+                  l.validFrom === nextFrom &&
+                  l.validTo === nextTo &&
+                  (l.date < nextFrom || l.date > nextTo)
+                ),
+            )
         }),
 
       // ── ученици ──────────────────────────────────────────────────────────
