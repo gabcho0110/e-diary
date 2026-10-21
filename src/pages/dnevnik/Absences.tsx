@@ -46,6 +46,23 @@ const CELL_STYLE: Record<Status, string> = {
 const isoOf = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
+/**
+ * Какво показва панелът с подробности. Кликът върху конкретна колона филтрира
+ * списъка и оцветява панела според вида — както е в референтния дневник:
+ *   Закъснения  → жълт
+ *   Неуважени   → червеникав
+ *   Уважени     → зелен
+ *   (ученик)    → неутрален, всички отсъствия
+ */
+type DetailMode = 'закъснения' | 'неуважени' | 'уважени' | 'всички'
+
+const PANEL: Record<DetailMode, { bg: string; border: string; icon: string; empty: string }> = {
+  'закъснения': { bg: '#dfdca7', border: '#c5c065', icon: '#7a7320', empty: 'Няма закъснения за този ученик.' },
+  'неуважени': { bg: '#f5c7b6', border: '#e29b82', icon: '#a2452a', empty: 'Няма неуважени отсъствия за този ученик.' },
+  'уважени': { bg: '#c0e2d4', border: '#8ec5ab', icon: '#1c5e46', empty: 'Няма уважени отсъствия за този ученик.' },
+  'всички': { bg: '#eef3f7', border: '#cfdde8', icon: '#337ab7', empty: 'За този ученик няма въведени отсъствия.' },
+}
+
 const todayISO = () => isoOf(new Date())
 
 /** 1 = понеделник … 7 = неделя (българската подредба, не JS-овата). */
@@ -632,24 +649,30 @@ function WeekAdminPage({
   )
 }
 
-// ── Жълт панел с подробности за отсъствията на един ученик ──────────────────
+// ── Панел с подробности за отсъствията на един ученик ───────────────────────
 function AbsenceDetail({
-  list, canExcuse, canEdit, onExcuse, onDelete, onClose,
+  list, mode, canExcuse, canEdit, onExcuse, onEdit, onDelete, onClose,
 }: {
   list: Absence[]
+  mode: DetailMode
   canExcuse: boolean
   canEdit: (a: Absence) => boolean
   onExcuse: (a: Absence) => void
+  onEdit: (a: Absence) => void
   onDelete: (a: Absence) => void
   onClose: () => void
 }) {
   const { subjectName, userName } = useApp()
+  const p = PANEL[mode]
 
   if (!list.length) {
     return (
-      <div className="relative border-y border-[#f5dfa0] bg-[#fdf6d7] px-4 py-3 text-[12.5px] text-[#7a6317]">
-        За този ученик няма въведени отсъствия.
-        <button onClick={onClose} className="absolute right-2 top-2 text-[#7a6317] hover:opacity-70">
+      <div
+        className="relative border-y px-4 py-3 text-[12.5px] text-ink-800"
+        style={{ background: p.bg, borderColor: p.border }}
+      >
+        {p.empty}
+        <button onClick={onClose} className="absolute right-2 top-2 text-ink-600 hover:opacity-70">
           <Icon name="close" size={13} />
         </button>
       </div>
@@ -657,13 +680,13 @@ function AbsenceDetail({
   }
 
   return (
-    <div className="border-y border-[#f5dfa0] bg-[#fdf6d7]">
+    <div className="border-y" style={{ background: p.bg, borderColor: p.border }}>
       <div className="flex items-center justify-end px-3 pt-1.5">
-        <button onClick={onClose} title="Затвори" className="text-[#7a6317] hover:opacity-70">
+        <button onClick={onClose} title="Затвори" className="text-ink-600 hover:opacity-70">
           <Icon name="close" size={13} />
         </button>
       </div>
-      <div className="divide-y divide-[#f0e3b4] pb-1">
+      <div className="divide-y pb-1" style={{ borderColor: p.border }}>
         {list.map((a) => {
           const kind = a.reason === 'закъснение'
             ? 'ЗАКЪСНЕНИЕ'
@@ -671,15 +694,28 @@ function AbsenceDetail({
           const created = (a.createdAt ?? '').replace('T', ' ').slice(0, 19)
           return (
             <div key={a.id} className="flex flex-wrap items-start gap-2 px-3 py-2">
-              <Icon name="warn" size={15} className="mt-0.5 shrink-0 text-[#b58b00]" strokeWidth={2.2} />
+              <span
+                className="mt-[2px] grid h-[14px] w-[14px] shrink-0 place-items-center rounded-full border text-[9px] font-bold leading-none"
+                style={{ borderColor: p.icon, color: p.icon }}
+              >
+                i
+              </span>
               <div className="min-w-0 flex-1">
                 <p className="text-[12.5px] text-ink-800">
                   <b>({kind})</b>{' '}
                   <span>{subjectName(a.subjectId)} - Час {a.period}</span>
-                  <span className="mx-1.5 text-[#b58b00]">|</span>
-                  <Icon name="calendar" size={12} className="mr-1 inline align-[-1px] text-[#b58b00]" />
+                  <span className="mx-1.5 text-ink-400">|</span>
+                  <Icon name="calendar" size={12} className="mr-1 inline align-[-1px] text-ink-500" />
                   {dateOnly(a.date)}
                 </p>
+                {a.excused && (a.excuseReason || a.note) && (
+                  <p className="mt-0.5 text-[11.5px] italic text-ink-700">
+                    Уважено поради:{' '}
+                    {a.excuseReason
+                      ?? (a.reason === 'семейни причини' ? 'Семейни причини' : a.reason === 'извинено' ? 'Извинено' : 'уважителна причина')}
+                    {a.note ? ` (${a.note})` : ''}
+                  </p>
+                )}
                 <p className="mt-0.5 text-[11.5px] text-ink-600">
                   <span className="italic">Въведено от:</span>{' '}
                   <Icon name="user" size={11} className="mr-1 inline align-[-1px] text-[#2b6ca3]" />
@@ -687,11 +723,18 @@ function AbsenceDetail({
                   <span className="mx-1 text-ink-300">/</span>
                   <Icon name="clock" size={11} className="mr-1 inline align-[-1px] text-ink-400" />
                   {created || '—'}
-                  {a.excuseReason && <span className="ml-2">· Мотив: {a.excuseReason}</span>}
-                  {a.note && <span className="ml-2">· {a.note}</span>}
+                  {!a.excused && a.excuseReason && <span className="ml-2">· Мотив: {a.excuseReason}</span>}
                 </p>
               </div>
               <div className="flex items-center gap-1.5">
+                {canExcuse && a.excused && (
+                  <button
+                    onClick={() => onEdit(a)}
+                    className="inline-flex items-center gap-1 rounded-[2px] bg-[#3598dc] px-2 py-1 text-[11.5px] font-semibold text-white hover:brightness-95"
+                  >
+                    <Icon name="edit" size={11} strokeWidth={2.4} /> Редактирай
+                  </button>
+                )}
                 {canExcuse && !a.excused && a.reason !== 'закъснение' && (
                   <button
                     onClick={() => onExcuse(a)}
@@ -727,7 +770,7 @@ export function AbsencesTab({ classId }: { classId: string }) {
   const [filter, setFilter] = useState<'всички' | 'неуважителни' | 'закъснения' | 'уважени'>('всички')
   const [picked, setPicked] = useState<Record<string, boolean>>({})
   const [date, setDate] = useState(todayISO())
-  const [detailFor, setDetailFor] = useState<string | null>(null)
+  const [detailFor, setDetailFor] = useState<{ sid: string; mode: DetailMode } | null>(null)
   const [excuseFor, setExcuseFor] = useState<Absence | null>(null)
   const [excuse, setExcuse] = useState({ reason: 'извинено' as Absence['reason'], note: '' })
   const [toast, setToast] = useState<string | null>(null)
@@ -752,10 +795,14 @@ export function AbsencesTab({ classId }: { classId: string }) {
   const canEditColumn = (s: ScheduleEntry) => canAdmin || s.teacherId === user?.id
 
   const hours = (a: Absence) => (a.wholeDay ? HOURS_PER_DAY : 1)
+  /** Закъснението е отделна категория — не се брои нито към уважените, нито към неуважените. */
+  const isLate = (a: Absence) => a.reason === 'закъснение'
+  const isUnexcused = (a: Absence) => !a.excused && !isLate(a)
+
   const stats = (sid: string) => {
     const list = all.filter((a) => a.studentId === sid)
-    const late = list.filter((a) => a.reason === 'закъснение')
-    const unexcused = list.filter((a) => !a.excused)
+    const late = list.filter(isLate)
+    const unexcused = list.filter(isUnexcused)
     const excused = list.filter((a) => a.excused)
     return {
       late: late.length,
@@ -765,10 +812,14 @@ export function AbsencesTab({ classId }: { classId: string }) {
     }
   }
 
+  /** Кликът върху колона отваря панела само с нейните отсъствия. */
+  const openDetail = (sid: string, mode: DetailMode) =>
+    setDetailFor((p) => (p && p.sid === sid && p.mode === mode ? null : { sid, mode }))
+
   const rowsForFilter = (sid: string) => {
     const list = all.filter((a) => a.studentId === sid)
-    if (filter === 'неуважителни') return list.filter((a) => !a.excused)
-    if (filter === 'закъснения') return list.filter((a) => a.reason === 'закъснение')
+    if (filter === 'неуважителни') return list.filter(isUnexcused)
+    if (filter === 'закъснения') return list.filter(isLate)
     if (filter === 'уважени') return list.filter((a) => a.excused)
     return list
   }
@@ -826,10 +877,11 @@ export function AbsencesTab({ classId }: { classId: string }) {
 
   const doExcuse = () => {
     if (!excuseFor) return
+    const editing = !!excuseFor.excused
     excuseAbsences([excuseFor.id], excuse.reason, excuse.note || undefined)
     setExcuseFor(null)
     setExcuse({ reason: 'извинено', note: '' })
-    setToast('Отсъствието е уважено.')
+    setToast(editing ? 'Промените по уважаването са запазени.' : 'Отсъствието е уважено.')
   }
 
   const notedAbsences = all
@@ -839,7 +891,13 @@ export function AbsencesTab({ classId }: { classId: string }) {
 
   const detailList = detailFor
     ? all
-      .filter((a) => a.studentId === detailFor)
+      .filter((a) => a.studentId === detailFor.sid)
+      .filter((a) =>
+        detailFor.mode === 'закъснения' ? isLate(a)
+          : detailFor.mode === 'уважени' ? a.excused
+            : detailFor.mode === 'неуважени' ? isUnexcused(a)
+              : true,
+      )
       .sort((a, b) => b.date.localeCompare(a.date) || b.period - a.period)
     : []
 
@@ -908,7 +966,7 @@ export function AbsencesTab({ classId }: { classId: string }) {
           </button>
         )}
         <span className="ml-auto text-[11.5px] text-ink-400">
-          Клик върху числата на ученик показва подробности за отсъствията му.
+          Клик върху число показва само тази колона — закъснения, неуважени или уважени.
         </span>
       </div>
 
@@ -930,10 +988,10 @@ export function AbsencesTab({ classId }: { classId: string }) {
           const st = stats(s.id)
           const shown = rowsForFilter(s.id).length
           const on = !!picked[s.id]
-          const open = detailFor === s.id
+          const open = detailFor?.sid === s.id
           return (
             <Fragment key={s.id}>
-              <tr className={`${on ? 'bg-[#eef7fb]' : open ? 'bg-[#fdf6d7]/40' : ''} hover:bg-[#f7fbfd]`}>
+              <tr className={`${on ? 'bg-[#eef7fb]' : open ? 'bg-[#f2f8fc]' : ''} hover:bg-[#f7fbfd]`}>
                 {isStaff && (
                   <td className="px-3 py-2">
                     <input
@@ -945,7 +1003,7 @@ export function AbsencesTab({ classId }: { classId: string }) {
                 )}
                 <td className="px-3 py-2 text-[12.5px] font-bold text-ink-400">{s.number}</td>
                 <td className="px-3 py-2">
-                  <button onClick={() => setDetailFor(open ? null : s.id)} className="text-left">
+                  <button onClick={() => openDetail(s.id, 'всички')} className="text-left">
                     <StudentCell student={s} showNumber={false} />
                   </button>
                   {filter !== 'всички' && (
@@ -954,7 +1012,8 @@ export function AbsencesTab({ classId }: { classId: string }) {
                 </td>
                 <td className="px-3 py-2 text-center">
                   <button
-                    onClick={() => setDetailFor(open ? null : s.id)}
+                    onClick={() => openDetail(s.id, 'закъснения')}
+                    title="Покажи само закъсненията"
                     className={on ? 'opacity-40 transition-opacity' : 'transition-opacity'}
                   >
                     <Num value={st.late} tone={st.late ? 'olive' : 'zero'} />
@@ -962,7 +1021,8 @@ export function AbsencesTab({ classId }: { classId: string }) {
                 </td>
                 <td className="px-3 py-2 text-center">
                   <button
-                    onClick={() => setDetailFor(open ? null : s.id)}
+                    onClick={() => openDetail(s.id, 'неуважени')}
+                    title="Покажи само неуважените отсъствия"
                     className={on ? 'opacity-40 transition-opacity' : 'transition-opacity'}
                   >
                     <Num value={st.unexcused} tone={st.unexcused ? 'salmon' : 'zero'} />
@@ -970,7 +1030,8 @@ export function AbsencesTab({ classId }: { classId: string }) {
                 </td>
                 <td className="px-3 py-2 text-center">
                   <button
-                    onClick={() => setDetailFor(open ? null : s.id)}
+                    onClick={() => openDetail(s.id, 'неуважени')}
+                    title="Покажи само неуважените отсъствия"
                     className={on ? 'opacity-40 transition-opacity' : 'transition-opacity'}
                   >
                     <Num value={st.unexcusedHours} tone={st.unexcusedHours ? 'salmon' : 'zero'} />
@@ -978,7 +1039,8 @@ export function AbsencesTab({ classId }: { classId: string }) {
                 </td>
                 <td className="px-3 py-2 text-center">
                   <button
-                    onClick={() => setDetailFor(open ? null : s.id)}
+                    onClick={() => openDetail(s.id, 'уважени')}
+                    title="Покажи само уважените отсъствия"
                     className={on ? 'opacity-40 transition-opacity' : 'transition-opacity'}
                   >
                     <Num value={st.excusedHours} tone={st.excusedHours ? 'green' : 'zero'} />
@@ -990,9 +1052,11 @@ export function AbsencesTab({ classId }: { classId: string }) {
                   <td colSpan={isStaff ? 7 : 6} className="p-0">
                     <AbsenceDetail
                       list={detailList}
+                      mode={detailFor.mode}
                       canExcuse={canAdmin}
                       canEdit={canEditAbsence}
                       onExcuse={(a) => { setExcuseFor(a); setExcuse({ reason: 'извинено', note: '' }) }}
+                      onEdit={(a) => { setExcuseFor(a); setExcuse({ reason: a.reason, note: a.note ?? '' }) }}
                       onDelete={(a) => {
                         if (!window.confirm(`Да се изтрие ли отсъствието от ${dateOnly(a.date)}?`)) return
                         deleteAbsence(a.id)
@@ -1038,9 +1102,10 @@ export function AbsencesTab({ classId }: { classId: string }) {
         />
       )}
 
-      {/* ── Уважи едно отсъствие ── */}
+      {/* ── Уважи / редактирай уважаване ── */}
       <Modal
-        open={!!excuseFor} onClose={() => setExcuseFor(null)} title="Уважаване на отсъствие"
+        open={!!excuseFor} onClose={() => setExcuseFor(null)}
+        title={excuseFor?.excused ? 'Редактиране на уважаване' : 'Уважаване на отсъствие'}
         footer={
           <>
             <button onClick={() => setExcuseFor(null)} className="btn-ghost">Отказ</button>
@@ -1049,7 +1114,10 @@ export function AbsencesTab({ classId }: { classId: string }) {
         }
       >
         {excuseFor && (
-          <p className="mb-3 rounded-[3px] bg-[#fdf6d7] px-3 py-2 text-[12.5px] text-[#7a6317]">
+          <p
+            className="mb-3 rounded-[3px] px-3 py-2 text-[12.5px] text-ink-800"
+            style={{ background: excuseFor.excused ? PANEL['уважени'].bg : PANEL['неуважени'].bg }}
+          >
             {subjectName(excuseFor.subjectId)} · {dateOnly(excuseFor.date)} · {excuseFor.period} час
           </p>
         )}
