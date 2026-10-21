@@ -110,6 +110,12 @@ export function MyLesson() {
   const [badgeFor, setBadgeFor] = useState<string | null>(null)
   const [highlight, setHighlight] = useState<number | null>(null)
   const [flash, setFlash] = useState<string | null>(null)
+  /**
+   * Брояч, който кара ефектът по-долу да прочете базата наново. След запис
+   * `marks` трябва да се презаредят, иначе вторият „Запази" пише същите оценки
+   * и отзиви още веднъж (id-тата на новите записи не са в паметта).
+   */
+  const [reload, setReload] = useState(0)
 
   // учителят, чиито часове гледаме (админът може да надникне при колега)
   const teachersWithLessons = useMemo(() => {
@@ -192,9 +198,9 @@ export function MyLesson() {
     setTopicKind(rep?.kind || 'НЗ')
     setHomework(rep?.homework ?? '')
     setDue(rep?.homeworkDue ?? addDaysIso(lesson.date, 1))
-    // нарочно: презареждаме само при смяна на часа
+    // нарочно: презареждаме само при смяна на часа (или след запис)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lessonKey, lesson?.date, students.length])
+  }, [lessonKey, lesson?.date, students.length, reload])
 
   /** Предишните теми по предмета — за подсказка при въвеждане. */
   const topicHistory = useMemo(() => {
@@ -340,6 +346,8 @@ export function MyLesson() {
     )
     setFlash('Промените са записани в „Дневник".')
     window.setTimeout(() => setFlash(null), 3200)
+    // прочитаме базата наново, за да не се запише същото втори път
+    setReload((v) => v + 1)
   }
 
   // ── екрани без съдържание ────────────────────────────────────────────────
