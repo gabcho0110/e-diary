@@ -674,8 +674,14 @@ function WeekAdminPage({
     if (toExcuse.size && chosen) excuseAbsences([...toExcuse], chosen.reason)
     if (rows.length) addAbsences(rows)
 
+    // новите отсъствия, които попадат в период с бележка, влизат направо извинени
+    const byNote = rows.filter((r) =>
+      db.absenceNotes.some((n) => n.studentId === r.studentId && n.from <= r.date && r.date <= n.to),
+    ).length
+
     const parts: string[] = []
     if (rows.length) parts.push(`Успешно добавихте ${rows.length} ${rows.length === 1 ? 'отсъствие' : 'отсъствия'}.`)
+    if (byNote) parts.push(`От тях ${byNote} ${byNote === 1 ? 'е извинено' : 'са извинени'} автоматично по бележка.`)
     if (toExcuse.size) parts.push(`Уважени ${toExcuse.size} ${toExcuse.size === 1 ? 'отсъствие' : 'отсъствия'}.`)
     if (!parts.length) parts.push(already ? 'Тези отсъствия вече са въведени.' : 'Няма промени за запазване.')
     onDone(parts.join(' '))
@@ -1113,9 +1119,14 @@ export function AbsencesTab({ classId }: { classId: string }) {
 
     setAdding(false)
     const added = rows.length
+    // новите отсъствия в период с бележка влизат направо извинени
+    const byNote = rows.filter((r) =>
+      db.absenceNotes.some((n) => n.studentId === r.studentId && n.from <= r.date && r.date <= n.to),
+    ).length
     setToast(
       added
-        ? `Успешно добавихте ${added} ${added === 1 ? 'отсъствие' : 'отсъствия'}.`
+        ? `Успешно добавихте ${added} ${added === 1 ? 'отсъствие' : 'отсъствия'}.` +
+          (byNote ? ` От тях ${byNote} ${byNote === 1 ? 'е извинено' : 'са извинени'} автоматично по бележка.` : '')
         : removed
           ? `Премахнахте ${removed} ${removed === 1 ? 'отсъствие' : 'отсъствия'}.`
           : 'Няма промени за запазване.',

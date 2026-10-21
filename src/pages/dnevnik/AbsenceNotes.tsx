@@ -279,14 +279,11 @@ export function AbsenceNotesPage({ klass, students, onClose, onToast }: {
         </div>
 
         <div className="space-y-1.5">
-          {isMedical ? (
-            <BlueBar>
-              Бележки за период над 30 дни не се използват за автоматично уважаване на отсъствия.
-              Ако желаете могат да бъдат активирани от бутон „Уважи/Активирай".
-            </BlueBar>
-          ) : (
-            <BlueBar>Не може да изтривате бележки за изминал период.</BlueBar>
-          )}
+          <BlueBar>
+            Бележката уважава автоматично всички отсъствия на ученика в периода си — и вече
+            въведените, и тези, които ще се въведат след това. Закъсненията се отчитат отделно.
+          </BlueBar>
+          {!isMedical && <BlueBar>Не може да изтривате бележки за изминал период.</BlueBar>}
           {isParent && (
             <YellowBar>
               ВНИМАНИЕ! След одобрение на бележка, подадена от родител, ще може да свалите заявление в PDF.
@@ -535,10 +532,26 @@ function NoteForm({ klass, students, kind, editing, onBack, onSaved }: {
       fileName: fileName || undefined,
     }))
 
-    const excused = addAbsenceNotesAndExcuse(items)
+    // Броим предварително: така съобщението е вярно независимо кога React
+    // изпълнява обновяването на състоянието.
+    const willExcuse = items.reduce(
+      (sum, it) =>
+        sum +
+        db.absences.filter(
+          (a) =>
+            a.studentId === it.studentId &&
+            a.date >= it.from &&
+            a.date <= it.to &&
+            !a.excused &&
+            !a.deletedAt &&
+            a.reason !== 'закъснение',
+        ).length,
+      0,
+    )
+    addAbsenceNotesAndExcuse(items)
     onSaved(
       `Добавени ${items.length} ${items.length === 1 ? 'бележка' : 'бележки'}` +
-      (excused ? `, уважени ${excused} ${excused === 1 ? 'отсъствие' : 'отсъствия'}.` : '.'),
+      (willExcuse ? `, уважени ${willExcuse} ${willExcuse === 1 ? 'отсъствие' : 'отсъствия'}.` : '.'),
     )
   }
 

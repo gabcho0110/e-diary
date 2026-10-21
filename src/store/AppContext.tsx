@@ -11,6 +11,43 @@ import { storage, type StorageMode } from '../lib/storage'
 import { MODULES, type ModuleDef } from '../lib/modules'
 import { isAdmin, isStaff, hasAnyRole, ROLE_MAP } from '../lib/roles'
 
+// ── извиняване по бележка ───────────────────────────────────────────────────
+//
+// Правилото е едно: щом има бележка за ученик и период, отсъствията в този
+// период са извинени — независимо дали са въведени преди бележката или след
+// нея. Затова е една функция, която се вика и при добавяне на отсъствие, и при
+// добавяне/редакция на бележка.
+
+/** Бележката, която покрива отсъствието (по ученик и дата). */
+function noteCovering(notes: AbsenceNote[], a: Absence): AbsenceNote | undefined {
+  return notes.find((n) => n.studentId === a.studentId && n.from <= a.date && a.date <= n.to)
+}
+
+/** Какво се записва в отсъствието, когато го уважава бележка. */
+function noteReason(n: AbsenceNote): { reason: Absence['reason']; label: string } {
+  if (n.kind === 'родителска') return { reason: 'семейни причини', label: 'Семейни причини' }
+  if (n.kind === 'медицинска') return { reason: 'извинено', label: 'Извинено (медицинска бележка)' }
+  return { reason: 'извинено', label: 'Извинено' }
+}
+
+/**
+ * Уважава всички отсъствия, които попадат в периода на бележка.
+ * Връща броя уважени. Закъсненията не се пипат — те са отделна категория и
+ * бележка не ги превръща в отсъствия.
+ */
+function applyNotes(d: DB): number {
+  let n = 0
+  d.absences = d.absences.map((a) => {
+    if (a.excused || a.deletedAt || a.reason === 'закъснение') return a
+    const note = noteCovering(d.absenceNotes, a)
+    if (!note) return a
+    const { reason, label } = noteReason(note)
+    n++
+    return { ...a, excused: true, reason, excuseReason: label, noteId: note.id, note: note.number ?? a.note }
+  })
+  return n
+}
+
 interface Ctx {
   db: DB
   user: User | null
@@ -465,6 +502,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               createdAt: new Date().toISOString().slice(0, 10),
             }),
           )
+          // ако за този период вече има бележка — отсъствието влиза направо извинено
+          applyNotes(d)
         }),
       setAbsenceReason: (id, reason, excused) =>
         update((d) => {
@@ -718,7 +757,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateAbsenceNote: (id, patch) =>
         update((d) => {
           const i = d.absenceNotes.findIndex((n) => n.id === id)
-          if (i >= 0) d.absenceNotes[i] = { ...d.absenceNotes[i], ...patch }
+          if (i < 0) return
+          d.absenceNotes[i] = { ...d.absenceNotes[i], ...patch }
+          // разширен/сменен период → отсъствията в него се уважават веднага
+          applyNotes(d)
         }),
       deleteAbsenceNote: (id) =>
         update((d) => { d.absenceNotes = d.absenceNotes.filter((n) => n.id !== id) }),
@@ -737,26 +779,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         update((d) => {
           items.forEach((n, i) => {
             const id = `abn_${Date.now()}_${i}`
-            // медицинска и „друга" → извинено; родителска (семейни) → семейни причини
-            const reason: Absence['reason'] = n.kind === 'родителска' ? 'семейни причини' : 'извинено'
-            const label =
-              n.kind === 'медицинска' ? 'Извинено (медицинска бележка)'
-                : n.kind === 'родителска' ? 'Семейни причини'
-                  : 'Извинено'
-            const targets = d.absences.filter(
-              (a) => a.studentId === n.studentId && a.date >= n.from && a.date <= n.to && !a.excused && !a.deletedAt,
-            )
-            if (targets.length) {
-              const ids = new Set(targets.map((a) => a.id))
-              d.absences = d.absences.map((a) =>
-                ids.has(a.id)
-                  ? { ...a, excused: true, reason, excuseReason: label, noteId: id, note: n.number ?? a.note }
-                  : a,
-              )
-              excused += targets.length
-            }
             d.absenceNotes.unshift({ ...n, id, createdAt: stamp, applied: true, unexcusedCount: 0 })
           })
+          // общото правило — уважава всичко, което попада в периода на бележка
+          excused = applyNotes(d)
         })
         return excused
       },
@@ -770,21 +796,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             a.date >= note.from &&
             a.date <= note.to &&
             !a.excused &&
-            !a.deletedAt,
+            !a.deletedAt &&
+            a.reason !== 'закъснение',
         )
         if (!targets.length) return 0
-        const ids = new Set(targets.map((a) => a.id))
-        const reason: Absence['reason'] = note.kind === 'родителска' ? 'семейни причини' : 'извинено'
-        const label =
-          note.kind === 'медицинска' ? 'Извинено (медицинска бележка)'
-            : note.kind === 'родителска' ? 'Семейни причини'
-              : 'Извинено'
         update((d) => {
-          d.absences = d.absences.map((a) =>
-            ids.has(a.id)
-              ? { ...a, excused: true, reason, excuseReason: label, noteId: note.id, note: note.number ?? a.note }
-              : a,
-          )
+          applyNotes(d)
           const i = d.absenceNotes.findIndex((n) => n.id === note.id)
           if (i >= 0) d.absenceNotes[i] = { ...d.absenceNotes[i], applied: true, unexcusedCount: 0 }
         })
