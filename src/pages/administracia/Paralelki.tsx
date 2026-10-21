@@ -38,7 +38,7 @@ function journalFor(gradeLabel: string): string {
   return JOURNAL_TYPES[4]
 }
 
-const TEACHER_ROLES = ['teacher', 'class_teacher', 'deputy', 'director', 'sysadmin', 'educator', 'resource_teacher']
+const TEACHER_ROLES = ['teacher', 'deputy', 'director', 'sysadmin', 'educator', 'resource_teacher']
 
 interface PlanDraft extends Omit<ClassSubjectPlanRow, 'weeks1a' | 'weeks1b' | 'weeks2a' | 'weeks2b'> {
   key: string
@@ -192,7 +192,6 @@ function ClassForm({
         u.classIds = [...new Set([...(u.classIds ?? []), id])]
         const own = plan.filter((p) => p.teacherId === tid).map((p) => p.subjectId)
         if (own.length) u.subjectIds = [...new Set([...(u.subjectIds ?? []), ...own])]
-        if (tid === homeroom && !u.roles.includes('class_teacher')) u.roles = [...u.roles, 'class_teacher']
       }
       // класният ръководител, който е сменен, губи класа
       if (editing?.homeroomTeacherId && editing.homeroomTeacherId !== homeroom) {
@@ -734,7 +733,6 @@ function ChangeTeacher({ teachers, onClose }: { teachers: User[]; onClose: () =>
       const t = d.users.find((u) => u.id === teacherId)
       if (t) {
         t.classIds = [...new Set([...(t.classIds ?? []), classId])]
-        if (!t.roles.includes('class_teacher')) t.roles = [...t.roles, 'class_teacher']
       }
       if (old) {
         const o = d.users.find((u) => u.id === old)

@@ -138,7 +138,6 @@ const ROLE_ICON: Record<RoleId, string> = {
   director: 'badge',
   deputy: 'users',
   teacher: 'cap',
-  class_teacher: 'users',
   educator: 'person',
   resource_teacher: 'cap',
   psychologist: 'heart',

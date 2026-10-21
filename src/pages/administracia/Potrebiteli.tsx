@@ -7,17 +7,19 @@ import { Avatar, Icon, Input, PageHeader, Table } from '../../components/ui'
 import { AddPage, Toggle, WarnBanner } from '../dnevnik/forms'
 import UserProfile from './UserProfile'
 import {
-  AInput, ASelect, CheckList, Dash, EmptyRow, FormRow, FormTabs, ListHead, SquareAction, ToolBtn, Toolbar,
+  AInput, ASelect, Dash, EmptyRow, FormRow, FormTabs, ListHead, SquareAction, SubjectPicker, ToolBtn, Toolbar,
 } from './shared'
 
 /** Ред на ролите като в референтния дневник. */
 const ROLE_ORDER: RoleId[] = [
   'sysadmin', 'director', 'deputy', 'accountant', 'secretary', 'librarian',
-  'teacher', 'class_teacher', 'parent', 'student', 'educator', 'resource_teacher',
+  'teacher', 'parent', 'student', 'educator', 'resource_teacher',
   'psychologist', 'speech_therapist', 'nurse', 'guest',
 ]
 const ROLE_LIST = [...ROLES].sort((a, b) => ROLE_ORDER.indexOf(a.id) - ROLE_ORDER.indexOf(b.id))
-const TEACH_ROLES: RoleId[] = ['teacher', 'class_teacher', 'resource_teacher', 'educator']
+const TEACH_ROLES: RoleId[] = ['teacher', 'resource_teacher', 'educator']
+/** Празният низ е ред „Изберете" — новата роля не се подразбира. */
+type RoleDraft = RoleId | ''
 
 interface Draft {
   title: string
@@ -35,7 +37,7 @@ interface Draft {
   mapMode: boolean
   address: string
   city: string
-  roles: RoleId[]
+  roles: RoleDraft[]
   subjectIds: string[]
   initialTeacher: boolean
   externalLecturer: boolean
@@ -62,7 +64,7 @@ function draftOf(u?: User): Draft {
     mapMode: u?.mapMode ?? false,
     address: u?.address ?? '',
     city: u?.city ?? '',
-    roles: u?.roles?.length ? u.roles : ['teacher'],
+    roles: u?.roles?.length ? u.roles : [''],
     subjectIds: u?.subjectIds ?? [],
     initialTeacher: u?.initialTeacher ?? false,
     externalLecturer: u?.externalLecturer ?? false,
@@ -83,7 +85,8 @@ function UserForm({ editing, onClose }: { editing?: User; onClose: () => void })
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((p) => ({ ...p, [k]: v }))
   const subjects = useMemo(() => [...db.subjects].sort((a, b) => a.name.localeCompare(b.name, 'bg')), [db.subjects])
-  const isTeacher = d.roles.some((r) => TEACH_ROLES.includes(r))
+  const roleIds = useMemo(() => d.roles.filter((r): r is RoleId => !!r), [d.roles])
+  const isTeacher = roleIds.some((r) => TEACH_ROLES.includes(r))
 
   const save = (again: boolean) => {
     if (!d.firstName.trim() || !d.lastName.trim()) { setErr('Попълнете име и фамилия.'); setTab('main'); return }
@@ -98,7 +101,7 @@ function UserForm({ editing, onClose }: { editing?: User; onClose: () => void })
       lastName: d.lastName.trim(),
       email: d.email.trim(),
       phone: d.phone.trim(),
-      roles: d.roles.length ? d.roles : (['guest'] as RoleId[]),
+      roles: roleIds.length ? roleIds : (['guest'] as RoleId[]),
       subjectIds: isTeacher ? d.subjectIds : [],
       title: d.title || undefined,
       idType: d.idType,
@@ -302,23 +305,27 @@ function UserForm({ editing, onClose }: { editing?: User; onClose: () => void })
                     </p>
 
                     {d.roles.map((role, idx) => (
-                      <div key={`${role}-${idx}`} className="mb-3 rounded-[3px] border border-[#e4e9ee] p-3">
+                      <div key={`${role || 'empty'}-${idx}`} className="mb-3 rounded-[3px] border border-[#e4e9ee] p-3">
                         <FormRow label="Роля" required>
                           <div className="flex items-center gap-1">
                             <ASelect
                               value={role}
                               onChange={(e) => {
                                 const next = [...d.roles]
-                                next[idx] = e.target.value as RoleId
+                                next[idx] = e.target.value as RoleDraft
                                 set('roles', [...new Set(next)])
                               }}
                             >
+                              <option value="">— Изберете роля —</option>
                               {ROLE_LIST.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                             </ASelect>
                             <button
                               type="button"
                               title="Премахни ролята"
-                              onClick={() => set('roles', d.roles.filter((_, i) => i !== idx))}
+                              onClick={() => {
+                                const next = d.roles.filter((_, i) => i !== idx)
+                                set('roles', next.length ? next : [''])
+                              }}
                               className="grid h-[31px] w-[30px] shrink-0 place-items-center rounded-[3px] text-white"
                               style={{ background: '#e7505a' }}
                             >
@@ -327,7 +334,7 @@ function UserForm({ editing, onClose }: { editing?: User; onClose: () => void })
                           </div>
                         </FormRow>
 
-                        {TEACH_ROLES.includes(role) && (
+                        {role !== '' && TEACH_ROLES.includes(role) && (
                           <>
                             <FormRow label="Начален учител" required>
                               <div className="pt-1"><Toggle on={d.initialTeacher} onChange={(v) => set('initialTeacher', v)} /></div>
@@ -338,12 +345,15 @@ function UserForm({ editing, onClose }: { editing?: User; onClose: () => void })
                             <FormRow label="Номер по образец">
                               <AInput value={d.sampleNo} onChange={(e) => set('sampleNo', e.target.value)} placeholder="Номер" />
                             </FormRow>
-                            <FormRow label="Предмети" required hint="Избраните предмети определят по кои предмети учителят вижда паралелките в „Дневник“.">
-                              <CheckList
+                            <FormRow
+                              label="Предмети"
+                              required
+                              hint="Избраните предмети определят по кои предмети учителят вижда паралелките в „Дневник“. С „+“ добавяте още предмети към профила."
+                            >
+                              <SubjectPicker
                                 items={subjects.map((s) => ({ id: s.id, label: s.name }))}
                                 selected={d.subjectIds}
-                                onToggle={(id) => set('subjectIds', d.subjectIds.includes(id) ? d.subjectIds.filter((x) => x !== id) : [...d.subjectIds, id])}
-                                height={190}
+                                onChange={(ids) => set('subjectIds', ids)}
                               />
                             </FormRow>
                           </>
@@ -353,7 +363,7 @@ function UserForm({ editing, onClose }: { editing?: User; onClose: () => void })
 
                     <button
                       type="button"
-                      onClick={() => set('roles', [...d.roles, 'teacher'])}
+                      onClick={() => set('roles', [...d.roles, ''])}
                       className="inline-flex items-center gap-1.5 rounded-[3px] px-2.5 py-1.5 text-[12.5px] font-semibold text-white"
                       style={{ background: '#3598dc' }}
                     >
@@ -386,7 +396,7 @@ function UserForm({ editing, onClose }: { editing?: User; onClose: () => void })
               </FormRow>
               <FormRow label="Роли">
                 <div className="flex flex-wrap gap-1 pt-1">
-                  {d.roles.map((r) => (
+                  {roleIds.map((r) => (
                     <span key={r} className="chip bg-brand-50 text-brand-700">{ROLE_MAP[r]?.name ?? r}</span>
                   ))}
                 </div>

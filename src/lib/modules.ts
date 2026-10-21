@@ -15,7 +15,6 @@ const ALL: RoleId[] = [
   'director',
   'deputy',
   'teacher',
-  'class_teacher',
   'parent',
   'student',
   'psychologist',
@@ -28,7 +27,7 @@ const ALL: RoleId[] = [
   'resource_teacher',
   'guest',
 ]
-const TEACH: RoleId[] = ['sysadmin', 'director', 'deputy', 'teacher', 'class_teacher', 'educator', 'resource_teacher']
+const TEACH: RoleId[] = ['sysadmin', 'director', 'deputy', 'teacher', 'educator', 'resource_teacher']
 const FAMILY: RoleId[] = ['parent', 'student']
 const ADMIN: RoleId[] = ['sysadmin', 'director', 'deputy', 'secretary']
 

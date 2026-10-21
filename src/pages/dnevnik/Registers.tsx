@@ -335,13 +335,13 @@ export function SupportTab({ classId }: { classId: string }) {
 
   const students = studentsOf(classId)
   const staff = db.users.filter((u) =>
-    u.roles.some((r) => ['resource_teacher', 'psychologist', 'speech_therapist', 'teacher', 'class_teacher', 'educator'].includes(r)),
+    u.roles.some((r) => ['resource_teacher', 'psychologist', 'speech_therapist', 'teacher', 'educator'].includes(r)),
   )
   const rows = db.supportPlans
     .filter((s) => s.classId === classId)
     .sort((a, b) => b.date.localeCompare(a.date))
 
-  const authorId = () => db.users.find((u) => u.roles.includes('class_teacher') || u.roles.includes('teacher'))?.id ?? ''
+  const authorId = () => db.users.find((u) => u.roles.includes('teacher'))?.id ?? ''
   const openNew = () => {
     setEditId(null)
     setForm({ studentId: students[0]?.id ?? '', activity: SUPPORT_ACTIVITIES[0], date: nowLocal().slice(0, 10), ground: SUPPORT_GROUNDS[0], team: [] })
@@ -573,7 +573,7 @@ export function VhkTab({ classId }: { classId: string }) {
               <Field label="Учител">
                 <Select value={form.teacherId} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}>
                   <option value="">— изберете —</option>
-                  {db.users.filter((u) => u.roles.some((r) => ['teacher', 'class_teacher', 'educator'].includes(r))).map((u) => (
+                  {db.users.filter((u) => u.roles.some((r) => ['teacher', 'educator'].includes(r))).map((u) => (
                     <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
                   ))}
                 </Select>

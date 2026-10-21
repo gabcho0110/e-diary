@@ -5,7 +5,6 @@ export type RoleId =
   | 'director'
   | 'deputy'
   | 'teacher'
-  | 'class_teacher'
   | 'parent'
   | 'student'
   | 'psychologist'

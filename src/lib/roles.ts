@@ -31,13 +31,6 @@ export const ROLES: Role[] = [
     desc: 'Въвежда оценки, отсъствия, теми, материали и тестове по своите предмети.',
   },
   {
-    id: 'class_teacher',
-    name: 'Класен ръководител',
-    short: 'Класен',
-    group: 'Педагогически',
-    desc: 'Учител с допълнителни права върху своята паралелка — отсъствия, отзиви, родители.',
-  },
-  {
     id: 'educator',
     name: 'Възпитател',
     short: 'Възпитател',
@@ -139,7 +132,6 @@ export const STAFF_ROLES: RoleId[] = [
   'director',
   'deputy',
   'teacher',
-  'class_teacher',
   'educator',
   'resource_teacher',
   'psychologist',
@@ -159,5 +151,5 @@ export function isStaff(roles: RoleId[]): boolean {
 }
 
 export function isTeacherLike(roles: RoleId[]): boolean {
-  return hasAnyRole(roles, ['teacher', 'class_teacher', 'educator', 'resource_teacher', 'deputy', 'director', 'sysadmin'])
+  return hasAnyRole(roles, ['teacher', 'educator', 'resource_teacher', 'deputy', 'director', 'sysadmin'])
 }

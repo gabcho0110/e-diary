@@ -182,19 +182,19 @@ export function buildDB(): DB {
   const deputy = mk(3, 'Мария', 'Иванова', 'Георгиева', ['deputy', 'teacher'], 'zam', 'zam@su-hristobotev.bg', '+359 888 100 003')
 
   const teacherSpecs: [string, string, string[], RoleId[]][] = [
-    ['Елена', 'Петрова', ['БЕЛ'], ['teacher', 'class_teacher']],
-    ['Красимир', 'Стоянов', ['МАТ'], ['teacher', 'class_teacher']],
-    ['Виктория', 'Николова', ['АНГ'], ['teacher', 'class_teacher']],
-    ['Тодор', 'Христов', ['ИТ', 'ПРОГ', 'УЕБ'], ['teacher', 'class_teacher']],
+    ['Елена', 'Петрова', ['БЕЛ'], ['teacher']],
+    ['Красимир', 'Стоянов', ['МАТ'], ['teacher']],
+    ['Виктория', 'Николова', ['АНГ'], ['teacher']],
+    ['Тодор', 'Христов', ['ИТ', 'ПРОГ', 'УЕБ'], ['teacher']],
     ['Радост', 'Иванова', ['ИЦ', 'ГО'], ['teacher']],
     ['Пламен', 'Димитров', ['ГИ'], ['teacher']],
-    ['Невена', 'Тодорова', ['БЗО'], ['teacher', 'class_teacher']],
+    ['Невена', 'Тодорова', ['БЗО'], ['teacher']],
     ['Огнян', 'Василев', ['ФА'], ['teacher']],
     ['Лилия', 'Атанасова', ['ХООС'], ['teacher']],
     ['Цветелина', 'Борисова', ['МУЗ'], ['teacher']],
     ['Габриела', 'Кирилова', ['ИИ'], ['teacher']],
     ['Стоян', 'Мартинов', ['ФВС'], ['teacher']],
-    ['Десислава', 'Павлова', ['ТП', 'ПРЕД'], ['teacher', 'class_teacher']],
+    ['Десислава', 'Павлова', ['ТП', 'ПРЕД'], ['teacher']],
     ['Явор', 'Симеонов', ['НЕМ'], ['teacher']],
     ['Ралица', 'Емилова', ['МАТ-РП'], ['teacher']],
   ]
@@ -352,7 +352,7 @@ export function buildDB(): DB {
   demoTeacher.username = 'ucitel'
   demoTeacher.password = 'demo123'
   // първият учител вече е зает от `ucitel`, иначе двете имена се застъпват
-  const demoClass = teachers.find((t) => t.roles.includes('class_teacher') && t.id !== demoTeacher.id)!
+  const demoClass = teachers.find((t) => t.roles.includes('teacher') && t.id !== demoTeacher.id)!
   demoClass.username = 'klasen'
   demoClass.password = 'demo123'
 
@@ -673,7 +673,7 @@ export function buildDB(): DB {
     ['Обновяване на училищния сайт', 'Публикуване на новините за месеца.', 'нисък'],
   ]
   taskTitles.forEach(([title, description, priority], i) => {
-    const assignee = pick(users.filter((u) => u.roles.some((r) => ['teacher', 'class_teacher', 'deputy', 'secretary', 'accountant'].includes(r))))
+    const assignee = pick(users.filter((u) => u.roles.some((r) => ['teacher', 'deputy', 'secretary', 'accountant'].includes(r))))
     const status = pick(['нова', 'в процес', 'изпълнена', 'просрочена'] as const)
     tasks.push({
       id: uid('tsk', i + 1), title, description,

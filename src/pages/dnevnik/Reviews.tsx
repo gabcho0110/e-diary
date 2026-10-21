@@ -20,7 +20,7 @@ import type { Note } from '../../lib/types'
 type Open = { studentId: string; kind: ReviewKind; badge: string | null } | null
 
 /** Ролята за подписа „(Системен администратор)" — най-важната, не всичките. */
-const ROLE_ORDER = ['sysadmin', 'director', 'deputy', 'class_teacher', 'teacher', 'parent', 'student']
+const ROLE_ORDER = ['sysadmin', 'director', 'deputy', 'teacher', 'parent', 'student']
 
 export function ReviewsTab({ classId }: { classId: string }) {
   const { db, isStaff, user, studentsOf, subjectName, deleteNote, updateNote } = useApp()

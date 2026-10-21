@@ -133,7 +133,7 @@ export default function Nachalo() {
     for (const m of db.messages) bump(m.fromId)
 
     const teachers = db.users
-      .filter((u) => u.roles.some((r) => r === 'teacher' || r === 'class_teacher'))
+      .filter((u) => u.roles.some((r) => r === 'teacher'))
       .map((u) => ({
         id: u.id,
         name: `${u.firstName} ${u.lastName}`,
