@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="bg">
+  <head>
+    <meta charset="UTF-8" />
+    <title>е-Дневник</title>
+    <!--
+      Резервен вход за среди, които връщат 404 за адреси без `#`
+      (напр. GitHub Pages). Пренасочва към същия екран през `#`.
+    -->
+    <script>
+      var roots = ['/nachalo', '/dnevnik', '/razpisanie', '/administracia']
+      var p = location.pathname.replace(/\/index\.html$/, '')
+      var cut = roots
+        .map(function (r) { return p.indexOf(r) })
+        .filter(function (i) { return i >= 0 })
+      var target = cut.length ? p.slice(Math.min.apply(null, cut)) : '/nachalo'
+      location.replace('/#' + target + location.search)
+    </script>
+  </head>
+  <body></body>
+</html>
