@@ -4,6 +4,7 @@ import { useApp } from '../store/AppContext'
 import { ADMIN_ITEMS, ADMIN_MENU, pageTitle } from '../lib/modules'
 import { ROLE_MAP, roleNames } from '../lib/roles'
 import { groupClasses, shortClassName, classHeaderTitle } from '../lib/classes'
+import { ClassTitle } from './ClassTitle'
 import type { Klass } from '../lib/types'
 import { Avatar, Badge, Icon } from './ui'
 
@@ -433,21 +434,23 @@ function UserMenu() {
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const { mode, warning, dismissWarning, db, user, myClasses } = useApp()
+  const { mode, warning, dismissWarning, db, user, myClasses, can } = useApp()
   const [collapsed, setCollapsed] = useState(false)
   const loc = useLocation()
   const [params] = useSearchParams()
 
   /**
    * За „Дневник" горната лента показва отворената паралелка, а не думата
-   * „Дневник": 8В - Александър Г. Тодоров (класен).
+   * „Дневник": 8В - Александър Г. Тодоров (класен). Двете части са връзки —
+   * към информацията за класа и към профила на класния ръководител.
    */
-  const classTitle = useMemo(() => {
-    if (loc.pathname !== '/dnevnik') return ''
+  const classKlass = useMemo(() => {
+    if (loc.pathname !== '/dnevnik') return undefined
     const id = params.get('class') ?? myClasses[0]?.id ?? ''
-    const klass = myClasses.find((c) => c.id === id)
-    return klass ? classHeaderTitle(klass, db.users, user?.id) : ''
-  }, [loc.pathname, params, myClasses, db.users, user])
+    return myClasses.find((c) => c.id === id)
+  }, [loc.pathname, params, myClasses])
+
+  const classTitle = classKlass ? classHeaderTitle(classKlass, db.users, user?.id) : ''
 
   const title = classTitle || pageTitle(loc.pathname) || (loc.pathname === '/' ? 'Начало' : '')
 
@@ -463,7 +466,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <Icon name="home" size={17} />
             </Link>
             <Icon name="chevron" size={14} className="shrink-0 text-ink-300" />
-            <span className="truncate font-semibold text-ink-800">{title || 'Начало'}</span>
+            <span className="truncate font-semibold text-ink-800">
+              {classKlass
+                ? <ClassTitle klass={classKlass} users={db.users} meId={user?.id} linkable={can('administracia')} />
+                : title || 'Начало'}
+            </span>
             {mode === 'local' && (
               <Badge tone="warn" className="ml-2 hidden md:inline-flex">локални данни</Badge>
             )}

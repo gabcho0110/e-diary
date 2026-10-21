@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
 import { Badge, EmptyState, Icon, PageHeader } from '../components/ui'
-import { classHeaderTitle } from '../lib/classes'
+import { ClassTitle } from '../components/ClassTitle'
 import { GradebookTab } from './dnevnik/Gradebook'
 import { AbsencesTab } from './dnevnik/Absences'
 import { ReviewsTab } from './dnevnik/Reviews'
@@ -57,7 +57,7 @@ const TABS: TabDef[] = [
 const HOURS_PER_DAY = 7
 
 export default function Dnevnik() {
-  const { db, myClasses, user } = useApp()
+  const { db, myClasses, user, can } = useApp()
   const [params, setParams] = useSearchParams()
 
   const setView = (next: { tab?: string; klass?: string; subject?: string }) => {
@@ -120,11 +120,17 @@ export default function Dnevnik() {
         Заглавието НЕ е „Дневник", а отворената паралелка заедно с класния
         ръководител — както е в референтния дневник:
             8В - Александър Г. Тодоров (класен)
+        Двете части са връзки: името на паралелката отваря информацията за
+        класа, името на класния — профила му (само при достъп до „Администрация").
         Друга лента под него НЯМА: класът, класният ръководител, профилът и
         смяната се виждат от заглавието и от разделите, и не се повтарят.
       */}
       <PageHeader
-        title={klass ? classHeaderTitle(klass, db.users, user?.id) : 'Дневник'}
+        title={
+          klass
+            ? <ClassTitle klass={klass} users={db.users} meId={user?.id} linkable={can('administracia')} />
+            : 'Дневник'
+        }
         icon="book"
       />
 

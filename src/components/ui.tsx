@@ -84,7 +84,7 @@ export function Card({ children, className = '', pad = true }: { children: React
 
 export function PageHeader({
   title, subtitle, icon, actions,
-}: { title: string; subtitle?: string; icon?: string; actions?: React.ReactNode }) {
+}: { title: React.ReactNode; subtitle?: string; icon?: string; actions?: React.ReactNode }) {
   return (
     <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
       <div className="flex items-start gap-3">
