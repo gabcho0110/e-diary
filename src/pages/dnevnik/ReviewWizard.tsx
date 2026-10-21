@@ -50,7 +50,6 @@ export function ReviewWizard({ classId, klass, onClose }: {
   const [pickedStudents, setPickedStudents] = useState<Record<string, boolean>>({})
   const [kind, setKind] = useState<ReviewKind>('Похвала')
   const [picked, setPicked] = useState<PickedBadge[]>([])
-  const [active, setActive] = useState<PickedBadge | null>(null)
   const [texts, setTexts] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
 
@@ -75,15 +74,17 @@ export function ReviewWizard({ classId, klass, onClose }: {
 
   const isPicked = (b: PickedBadge) => picked.some((x) => x.name === b.name && x.kind === b.kind)
 
+  /**
+   * Избраната значка изчезва от каталога и отива вдясно, при коментара.
+   * Връща се обратно само с клик върху кръгчето до полето за описание.
+   */
   const toggleBadge = (b: PickedBadge) => {
     setError(null)
-    if (isPicked(b)) {
-      setPicked((list) => list.filter((x) => !(x.name === b.name && x.kind === b.kind)))
-      setActive((a) => (a && a.name === b.name && a.kind === b.kind ? null : a))
-    } else {
-      setPicked((list) => [...list, b])
-      setActive(b)
-    }
+    setPicked((list) =>
+      list.some((x) => x.name === b.name && x.kind === b.kind)
+        ? list.filter((x) => !(x.name === b.name && x.kind === b.kind))
+        : [...list, b],
+    )
   }
 
   const textOf = (b: PickedBadge) =>
@@ -103,8 +104,7 @@ export function ReviewWizard({ classId, klass, onClose }: {
     }
     const empty = picked.find((b) => b.kind === 'Забележка' && !textOf(b).trim())
     if (empty) {
-      setActive(empty)
-      setError('Въведете описание към забележката.')
+      setError(`Въведете описание към забележката „${empty.name}“.`)
       return
     }
 
@@ -127,7 +127,7 @@ export function ReviewWizard({ classId, klass, onClose }: {
   }
 
   const list = badgesOf(kind)
-  const activeBadge = active ? findBadge(active.name, active.kind) : undefined
+  const shown = list.filter((b) => !isPicked({ name: b.name, kind }))
 
   return (
     <AddPage
@@ -237,9 +237,13 @@ export function ReviewWizard({ classId, klass, onClose }: {
           </div>
 
           <div className="grid flex-1 grid-cols-3 content-start gap-y-4 p-3">
-            {list.map((b) => {
+            {shown.length === 0 && (
+              <p className="col-span-3 py-10 text-center text-[12.5px] leading-relaxed text-ink-500">
+                Всички значки от този раздел са избрани —<br />вижте ги вдясно, при коментара.
+              </p>
+            )}
+            {shown.map((b) => {
               const pb: PickedBadge = { name: b.name, kind }
-              const on = isPicked(pb)
               const good = kind === 'Похвала'
               return (
                 <button
@@ -247,32 +251,19 @@ export function ReviewWizard({ classId, klass, onClose }: {
                   type="button"
                   onClick={() => toggleBadge(pb)}
                   title={b.text}
-                  className="flex flex-col items-center gap-1.5"
+                  className="group flex flex-col items-center gap-1.5"
                 >
-                  <span className="relative">
-                    <span
-                      className="grid h-[56px] w-[56px] place-items-center rounded-full border-[4px] text-[30px] leading-none transition"
-                      style={{
-                        background: good ? '#c5df8f' : '#a33a32',
-                        borderColor: on ? (good ? '#5f9420' : '#7a2a24') : good ? '#8cc63f' : '#e8887e',
-                        boxShadow: on ? `0 0 0 3px ${good ? '#d7e9b0' : '#f3c9c4'}` : undefined,
-                      }}
-                    >
-                      <span>{b.emoji}</span>
-                    </span>
-                    {on && (
-                      <span
-                        className="absolute -right-0.5 -top-0.5 grid h-[17px] w-[17px] place-items-center
-                          rounded-full text-white shadow"
-                        style={{ background: good ? '#5f9420' : '#c0392b' }}
-                      >
-                        <Icon name="check" size={11} strokeWidth={3.4} />
-                      </span>
-                    )}
+                  <span
+                    className="grid h-[56px] w-[56px] place-items-center rounded-full border-[4px] text-[30px]
+                      leading-none transition group-hover:scale-[1.06] group-active:scale-95"
+                    style={{
+                      background: good ? '#c5df8f' : '#a33a32',
+                      borderColor: good ? '#8cc63f' : '#e8887e',
+                    }}
+                  >
+                    <span>{b.emoji}</span>
                   </span>
-                  <span className={`text-center text-[11.5px] leading-tight ${
-                    on ? 'font-bold text-ink-900' : 'text-ink-700'
-                  }`}>
+                  <span className="text-center text-[11.5px] leading-tight text-ink-700 group-hover:text-ink-900">
                     {b.name}
                   </span>
                 </button>
@@ -282,48 +273,82 @@ export function ReviewWizard({ classId, klass, onClose }: {
         </section>
 
         {/* ── 3. Въведи коментар ───────────────────────────────────────── */}
-        <section className="flex min-w-0 flex-col rounded-[3px] border border-[#c8d4dc] bg-white lg:w-[24%] lg:min-w-[230px]">
+        <section className="flex min-w-0 flex-col rounded-[3px] border border-[#c8d4dc] bg-white lg:w-[27%] lg:min-w-[250px]">
           <header className="flex items-center gap-2 bg-[#3d9fd6] px-3 py-[7px] text-white">
             <Icon name="edit" size={14} strokeWidth={2.4} />
             <h3 className="text-[13px] font-bold">3. Въведи коментар</h3>
+            {picked.length > 0 && (
+              <span className="ml-auto rounded-full bg-white/25 px-2 py-[1px] text-[11px] font-bold">
+                {picked.length}
+              </span>
+            )}
           </header>
 
-          <div className="flex flex-1 flex-col p-3">
-            {!active || !activeBadge ? (
+          <div className="flex flex-1 flex-col gap-2 p-2.5">
+            {picked.length === 0 ? (
               <div className="grid flex-1 place-items-center rounded-[2px] border border-dashed border-[#9fc3de] px-4 py-10 text-center">
                 <p className="text-[12.5px] leading-relaxed text-ink-400">
                   Тук се визуализират избраните отзиви.
                 </p>
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-2">
-                <span
-                  className="grid h-[56px] w-[56px] place-items-center rounded-full border-[4px] text-[30px] leading-none"
-                  style={{
-                    background: active.kind === 'Похвала' ? '#c5df8f' : '#a33a32',
-                    borderColor: active.kind === 'Похвала' ? '#8cc63f' : '#e8887e',
-                  }}
-                >
-                  <span>{activeBadge.emoji}</span>
-                </span>
-                <p className="text-center text-[12px] font-semibold text-ink-800">
-                  {activeBadge.name}
+              <>
+                {picked.map((b) => {
+                  const badge = findBadge(b.name, b.kind)
+                  const good = b.kind === 'Похвала'
+                  const bad = !!error && b.kind === 'Забележка' && !textOf(b).trim()
+                  return (
+                    <div
+                      key={keyOf(b)}
+                      className={`rounded-[3px] border p-2 ${
+                        bad ? 'border-[#e7505a] bg-[#fdf4f4]' : 'border-[#dbe5ec] bg-[#fbfdfe]'
+                      }`}
+                    >
+                      <div className="mb-1.5 flex items-start gap-2">
+                        <span className="min-w-0 flex-1 pt-1 text-[12px] font-bold leading-snug text-ink-800">
+                          {b.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleBadge(b)}
+                          title="Премахни отзива — значката се връща в средата"
+                          className="group relative shrink-0 rounded-full transition hover:scale-105 active:scale-95"
+                        >
+                          <span
+                            className="grid h-[38px] w-[38px] place-items-center rounded-full border-[3px]
+                              text-[19px] leading-none"
+                            style={{
+                              background: good ? '#c5df8f' : '#a33a32',
+                              borderColor: good ? '#8cc63f' : '#e8887e',
+                            }}
+                          >
+                            {badge?.emoji}
+                          </span>
+                          <span
+                            className="absolute -right-1 -top-1 grid h-[15px] w-[15px] place-items-center rounded-full
+                              bg-[#e7505a] text-white opacity-0 shadow transition group-hover:opacity-100"
+                          >
+                            <Icon name="close" size={9} strokeWidth={3.2} />
+                          </span>
+                        </button>
+                      </div>
+                      <textarea
+                        value={textOf(b)}
+                        onChange={(e) => { setText(b, e.target.value); setError(null) }}
+                        rows={3}
+                        placeholder={b.kind === 'Забележка' ? 'Опишете забележката…' : 'Опишете похвалата…'}
+                        className={`w-full resize-y rounded-[2px] border bg-white px-2 py-1.5 text-[12.5px]
+                          leading-relaxed text-ink-800 outline-none ${
+                            bad ? 'border-[#e7505a]' : 'border-[#cfd8e0] focus:border-[#3d9fd6]'
+                          }`}
+                      />
+                    </div>
+                  )
+                })}
+                <p className="mt-auto pt-1 text-[11px] leading-relaxed text-ink-400">
+                  Описанието се записва към всички избрани ученици. Клик върху значката я връща в средата.
                 </p>
-                <textarea
-                  value={textOf(active)}
-                  onChange={(e) => { setText(active, e.target.value); setError(null) }}
-                  rows={4}
-                  className={`mt-1 w-full resize-y rounded-[2px] border px-2 py-1.5 text-[12.5px]
-                    leading-relaxed text-ink-800 outline-none ${
-                      error && !textOf(active).trim()
-                        ? 'border-[#e7505a]'
-                        : 'border-[#cfd8e0] focus:border-[#3d9fd6]'
-                    }`}
-                />
-                <p className="w-full text-[11px] leading-relaxed text-ink-400">
-                  Описанието се записва към всички избрани ученици.
-                </p>
-              </div>
+              </>
             )}
           </div>
         </section>
