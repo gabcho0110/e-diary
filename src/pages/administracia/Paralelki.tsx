@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../../store/AppContext'
 import { Icon, Input, PageHeader, Select, Table } from '../../components/ui'
 import { AddPage, Toggle, WarnBanner } from '../dnevnik/forms'
+import ClassDetail from './ClassDetail'
 import type { ClassSubjectPlanRow, Klass, User } from '../../lib/types'
 import {
   AInput, ASelect, CheckList, Dash, EmptyRow, FormRow, FormTabs, ListHead, SquareAction, ToolBtn, Toolbar,
@@ -24,6 +26,7 @@ const DAY_ORGS = ['Първа смяна', 'Втора смяна', 'Целод�
 const PREP_KINDS = ['Непрофилирана', 'Профилирана', 'Професионална', 'Спортна', 'Дуална']
 const PLAN_KINDS = ['ООП', 'РП', 'ЗП', 'ЗИП', 'ИУЧ', 'ФУЧ', 'ОРЕС']
 const FOREIGN_LANGS = ['Английски език', 'Немски език', 'Френски език', 'Испански език', 'Руски език', 'Италиански език']
+const FUNDING = ['Държавно финансиране', 'Общинско финансиране', 'Частно финансиране', 'Проектно финансиране']
 
 /** Типът дневник се подсказва от класа, но може да се смени ръчно. */
 function journalFor(gradeLabel: string): string {
@@ -109,6 +112,9 @@ function ClassForm({
   const [dayOrg, setDayOrg] = useState(editing?.dayOrg ?? '')
   const [prepKind, setPrepKind] = useState(editing?.prepKind ?? (preset === 'ifo' ? 'Непрофилирана' : 'Непрофилирана'))
   const [shift, setShift] = useState<1 | 2>(editing?.shift ?? 1)
+  const [funding, setFunding] = useState(editing?.funding ?? 'Държавно финансиране')
+  const [merged, setMerged] = useState(editing?.merged ?? false)
+  const [special, setSpecial] = useState(editing?.special ?? false)
   const [rows, setRows] = useState<PlanDraft[]>(editing ? draftFrom(editing) : [])
   const [quick, setQuick] = useState<number | null>(null)
 
@@ -166,6 +172,9 @@ function ClassForm({
         educationForm: educationForm || undefined,
         dayOrg: dayOrg || undefined,
         prepKind,
+        funding,
+        merged,
+        special,
         plan,
       }
       const i = d.classes.findIndex((c) => c.id === id)
@@ -290,6 +299,17 @@ function ClassForm({
                   <Toggle on={shift === 2} onChange={(v) => setShift(v ? 2 : 1)} onLabel="Втора" />
                   <span className="text-[12px] text-ink-500">първа / втора смяна</span>
                 </div>
+              </FormRow>
+              <FormRow label="Финансира се от">
+                <ASelect value={funding} onChange={(e) => setFunding(e.target.value)}>
+                  {FUNDING.map((o) => <option key={o} value={o}>{o}</option>)}
+                </ASelect>
+              </FormRow>
+              <FormRow label="Слята паралелка">
+                <div className="pt-1"><Toggle on={merged} onChange={setMerged} /></div>
+              </FormRow>
+              <FormRow label="Специална паралелка/група (за деца със СОП)">
+                <div className="pt-1"><Toggle on={special} onChange={setSpecial} /></div>
               </FormRow>
             </div>
           ) : (
@@ -530,10 +550,27 @@ function QuickTeacher({
 // ── Списък с паралелки ──────────────────────────────────────────────────────
 export default function Paralelki() {
   const { db, update } = useApp()
+  const [params, setParams] = useSearchParams()
   const [q, setQ] = useState('')
   const [form, setForm] = useState<{ open: boolean; editing?: Klass; preset?: 'ifo' }>({ open: false })
   const [changeTeacher, setChangeTeacher] = useState(false)
   const [newGroup, setNewGroup] = useState(false)
+
+  /**
+   * Отворената паралелка и разделът в нея живеят в адреса — така „Назад" в
+   * браузъра връща към списъка, а връзката може да се сподели.
+   */
+  const setView = (patch: Record<string, string | null>) => {
+    const next = new URLSearchParams(params)
+    Object.entries(patch).forEach(([k, v]) => {
+      if (v === null || v === '') next.delete(k)
+      else next.set(k, v)
+    })
+    setParams(next, { replace: true })
+  }
+
+  const openClass = db.classes.find((c) => c.id === params.get('class'))
+  const classTab = params.get('ctab') ?? 'main'
 
   const teachers = db.users.filter((u) => u.roles.some((r) => TEACHER_ROLES.includes(r)))
 
@@ -558,6 +595,29 @@ export default function Paralelki() {
       d.classes = d.classes.filter((c) => c.id !== k.id)
       d.users.forEach((u) => { u.classIds = (u.classIds ?? []).filter((c) => c !== k.id) })
     })
+  }
+
+  // ── отворена паралелка ───────────────────────────────────────────────────
+  if (openClass) {
+    return (
+      <>
+        <ClassDetail
+          key={openClass.id}
+          klass={openClass}
+          tab={classTab}
+          onTab={(t) => setView({ ctab: t })}
+          onBack={() => setView({ class: null, ctab: null })}
+          onEdit={() => setForm({ open: true, editing: openClass })}
+        />
+        {form.open && (
+          <ClassForm
+            editing={form.editing}
+            preset={form.preset}
+            onClose={() => setForm({ open: false })}
+          />
+        )}
+      </>
+    )
   }
 
   return (
@@ -611,7 +671,11 @@ export default function Paralelki() {
           return (
             <tr key={k.id} className="hover:bg-[#f6fafd]">
               <td className="td">
-                <button onClick={() => setForm({ open: true, editing: k })} className="dn-link font-semibold">
+                <button
+                  onClick={() => setView({ class: k.id, ctab: null })}
+                  className="dn-link font-semibold"
+                  title="Отвори паралелката"
+                >
                   {k.name.replace(/-/g, '')}
                 </button>
               </td>
