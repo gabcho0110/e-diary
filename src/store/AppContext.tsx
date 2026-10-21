@@ -239,7 +239,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (saveTimer.current) window.clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(() => {
       void storage.save(next).then((r) => {
-        if (!r.ok && r.warning) setWarning(r.warning)
+        // предупреждение има и при успешен запис (предпазна проверка в storage)
+        if (r.warning) setWarning(r.warning)
         setMode(storage.mode())
       })
     }, 500)

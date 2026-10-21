@@ -122,18 +122,60 @@ let currentMode: StorageMode = 'local'
 let lastWire: Wire | null = null
 
 /** Разликата между последно изпратеното и новото състояние. */
-function diff(next: Wire): Wire | null {
+function diff(next: Wire): { patch: Wire | null; skipped: string[]; skippedKeys: string[] } {
   const prev = lastWire
-  if (!prev) return next
+  if (!prev) return { patch: next, skipped: [], skippedKeys: [] }
   const patch: Wire = {}
   let changed = false
   for (const [k, v] of Object.entries(next)) {
     if (prev[k] !== v) { patch[k] = v; changed = true }
   }
-  for (const k of Object.keys(prev)) {
-    if (!(k in next)) { (patch as Record<string, string | null>)[k] = null; changed = true }
+
+  // Предпазна мярка срещу масово изтриване.
+  //
+  // `diff` трие всеки запис, който е бил в базата, но липсва в паметта. Ако
+  // прочитането върне непълна база (или екран я подмени с празна), едно
+  // записване изтрива цяла колекция — точно така на 21.10.2026 изчезнаха
+  // „classes" и 16 учителски профила. Затова: ако колекция с 3+ записа
+  // изчезне наведнъж, изтриванията се пропускат и се връща предупреждение.
+  // Изтриване на отделни записи (и на последния останал) продължава да работи.
+  const countByCollection = (wire: Wire) => {
+    const m = new Map<string, number>()
+    for (const k of Object.keys(wire)) {
+      const coll = k.includes('/') ? k.slice(0, k.indexOf('/')) : k
+      m.set(coll, (m.get(coll) ?? 0) + 1)
+    }
+    return m
   }
-  return changed ? patch : null
+  const prevCount = countByCollection(prev)
+  const nextCount = countByCollection(next)
+  const skipped: string[] = []
+  const skippedKeys: string[] = []
+
+  for (const k of Object.keys(prev)) {
+    if (k in next) continue
+    const coll = k.includes('/') ? k.slice(0, k.indexOf('/')) : k
+    const before = prevCount.get(coll) ?? 0
+    const after = nextCount.get(coll) ?? 0
+    if (before >= 3 && after === 0) {
+      if (!skipped.includes(coll)) skipped.push(coll)
+      skippedKeys.push(k)
+      continue
+    }
+    ;(patch as Record<string, string | null>)[k] = null
+    changed = true
+  }
+  return { patch: changed ? patch : null, skipped, skippedKeys }
+}
+
+/** Съобщение за пропуснато масово изтриване (показва се като жълт банер). */
+function guardWarning(collections: string[]): string {
+  return (
+    'Предпазна проверка: в паметта липсват всички записи от ' +
+    collections.map((c) => `„${c}“`).join(', ') +
+    '. Записването им като изтрити е спряно, за да не се загубят данни. ' +
+    'Презаредете страницата — записите са си на мястото в базата.'
+  )
 }
 
 /** Праща ключовете на парчета, за да не е един огромен кадър при първоначално качване. */
@@ -228,8 +270,12 @@ export const storage = {
   /** Записва само променените записи (един multi-path update). */
   async save(db: DB, onProgress?: Progress): Promise<{ ok: boolean; warning?: string }> {
     const wire = toWire(db)
-    const patch = diff(wire)
-    if (!patch) return { ok: true }
+    const { patch, skipped, skippedKeys } = diff(wire)
+    if (!patch) {
+      return skipped.length
+        ? { ok: true, warning: guardWarning(skipped) }
+        : { ok: true }
+    }
 
     try {
       if (!lastWire) {
@@ -239,9 +285,17 @@ export const storage = {
         onProgress?.('Запис на промените…')
         await rtdb.patch(DB_ROOT, patch as Record<string, unknown>)
       }
-      lastWire = wire
+      // Пропуснатите ключове остават в `lastWire`, за да не се опитва
+      // изтриването им при всяко следващо записване.
+      if (skippedKeys.length && lastWire) {
+        const keep = lastWire
+        lastWire = { ...wire }
+        for (const k of skippedKeys) if (k in keep) (lastWire as Wire)[k] = keep[k]
+      } else {
+        lastWire = wire
+      }
       currentMode = 'cloud'
-      return { ok: true }
+      return skipped.length ? { ok: true, warning: guardWarning(skipped) } : { ok: true }
     } catch (e) {
       currentMode = 'local'
       console.warn('[storage] Firebase запис неуспешен', e)
