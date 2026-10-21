@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
 import { Badge, EmptyState, Icon, PageHeader } from '../components/ui'
-import { classHeaderTitle, personShort, shortClassName } from '../lib/classes'
+import { classHeaderTitle } from '../lib/classes'
 import { GradebookTab } from './dnevnik/Gradebook'
 import { AbsencesTab } from './dnevnik/Absences'
 import { ReviewsTab } from './dnevnik/Reviews'
@@ -120,31 +120,13 @@ export default function Dnevnik() {
         Заглавието НЕ е „Дневник", а отворената паралелка заедно с класния
         ръководител — както е в референтния дневник:
             8В - Александър Г. Тодоров (класен)
-        Подзаглавие НЯМА: броят ученици, предмети, профилът и смяната се
-        виждат в лентата отдолу и не се повтарят два пъти.
+        Друга лента под него НЯМА: класът, класният ръководител, профилът и
+        смяната се виждат от заглавието и от разделите, и не се повтарят.
       */}
       <PageHeader
         title={klass ? classHeaderTitle(klass, db.users, user?.id) : 'Дневник'}
         icon="book"
       />
-
-      {klass && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 border-b border-[var(--dn-line)] pb-2.5 text-[13px] text-ink-500">
-          <Badge tone="brand">{shortClassName(klass.name)}</Badge>
-          <span>
-            Класен ръководител:{' '}
-            <b className="text-ink-800">{personShort(db.users.find((u) => u.id === klass.homeroomTeacherId)) || '—'}</b>
-          </span>
-          {klass.profile && (
-            <>
-              <span className="h-4 w-px bg-ink-200" />
-              <span>Профил: <b className="text-ink-800">{klass.profile}</b></span>
-            </>
-          )}
-          <span className="h-4 w-px bg-ink-200" />
-          <span>Смяна: <b className="text-ink-800">{klass.shift}</b></span>
-        </div>
-      )}
 
       {/* ── Лента с раздели ── */}
       <div className="mb-0 flex items-stretch overflow-x-auto border-b border-[var(--dn-line)] bg-white">
