@@ -165,7 +165,8 @@ export function periodTime(period: number, shift: 1 | 2): [string, string] {
 /** „2026-10-18T11:25" → „18.10.2026 11:25" */
 export function formatDateTime(v?: string): string {
   if (!v) return '—'
-  const [date, time] = v.split('T')
+  // датите идват и като „2026-10-18 11:25" (с интервал), не само с „T"
+  const [date, time] = v.split(/[T ]/)
   const [y, m, d] = date.split('-')
   if (!y || !m || !d) return v
   return `${d}.${m}.${y}${time ? ` ${time.slice(0, 5)}` : ''}`

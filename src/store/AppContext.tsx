@@ -122,6 +122,8 @@ interface Ctx {
   deleteAbsenceNote: (id: string) => void
   /** уважава всички неуважени отсъствия на ученик в периода на бележката */
   applyAbsenceNote: (noteId: string) => number
+  /** добавя бележки и веднага уважава отсъствията в периода — връща броя уважени */
+  addAbsenceNotesAndExcuse: (n: Omit<AbsenceNote, 'id' | 'createdAt'>[]) => number
   /** „Уважи всички неуважени" — връща колко са уважени */
   excuseAllUnexcused: (classId: string, reason: Absence['reason'], note?: string) => number
   /** меко изтриване — записът остава видим през филтър „Изтрити" */
@@ -694,6 +696,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       deleteAbsenceNote: (id) =>
         update((d) => { d.absenceNotes = d.absenceNotes.filter((n) => n.id !== id) }),
 
+      /**
+       * Добавя бележка(и) и **веднага уважава** отсъствията в периода.
+       *
+       * Двете стъпки са в един `update`, защото `applyAbsenceNote` чете от
+       * затвореното състояние `db` — извикан веднага след добавяне, той още
+       * не вижда новите бележки. Затова тук се прави наведнъж и атомарно.
+       * Връща броя уважени отсъствия.
+       */
+      addAbsenceNotesAndExcuse: (items) => {
+        let excused = 0
+        const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ')
+        update((d) => {
+          items.forEach((n, i) => {
+            const id = `abn_${Date.now()}_${i}`
+            // медицинска и „друга" → извинено; родителска (семейни) → семейни причини
+            const reason: Absence['reason'] = n.kind === 'родителска' ? 'семейни причини' : 'извинено'
+            const label =
+              n.kind === 'медицинска' ? 'Извинено (медицинска бележка)'
+                : n.kind === 'родителска' ? 'Семейни причини'
+                  : 'Извинено'
+            const targets = d.absences.filter(
+              (a) => a.studentId === n.studentId && a.date >= n.from && a.date <= n.to && !a.excused && !a.deletedAt,
+            )
+            if (targets.length) {
+              const ids = new Set(targets.map((a) => a.id))
+              d.absences = d.absences.map((a) =>
+                ids.has(a.id)
+                  ? { ...a, excused: true, reason, excuseReason: label, noteId: id, note: n.number ?? a.note }
+                  : a,
+              )
+              excused += targets.length
+            }
+            d.absenceNotes.unshift({ ...n, id, createdAt: stamp, applied: true, unexcusedCount: 0 })
+          })
+        })
+        return excused
+      },
+
       applyAbsenceNote: (noteId) => {
         const note = db.absenceNotes.find((n) => n.id === noteId)
         if (!note) return 0
@@ -707,8 +747,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         )
         if (!targets.length) return 0
         const ids = new Set(targets.map((a) => a.id))
-        const reason: Absence['reason'] = note.kind === 'медицинска' ? 'извинено' : 'семейни причини'
-        const label = note.kind === 'медицинска' ? 'Извинено (медицинска бележка)' : 'Семейни причини'
+        const reason: Absence['reason'] = note.kind === 'родителска' ? 'семейни причини' : 'извинено'
+        const label =
+          note.kind === 'медицинска' ? 'Извинено (медицинска бележка)'
+            : note.kind === 'родителска' ? 'Семейни причини'
+              : 'Извинено'
         update((d) => {
           d.absences = d.absences.map((a) =>
             ids.has(a.id)

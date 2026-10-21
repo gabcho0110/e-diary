@@ -3,6 +3,7 @@ import { useApp } from '../../store/AppContext'
 import { Field, Icon, Input, Modal, Select, Textarea } from '../../components/ui'
 import type { Absence, Klass, ScheduleEntry, Student } from '../../lib/types'
 import { DnTable, EmptyRow, FilterButton, Num, StudentCell, TB, Th, Toolbar, dateOnly } from './shared'
+import { AbsenceNotesPage } from './AbsenceNotes'
 import { DAY_NAMES, addDays, ddmm, mondayOf } from '../../lib/week'
 
 /**
@@ -1130,11 +1131,6 @@ export function AbsencesTab({ classId }: { classId: string }) {
     setToast(editing ? 'Промените по уважаването са запазени.' : 'Отсъствието е уважено.')
   }
 
-  const notedAbsences = all
-    .filter((a) => a.note || a.excuseReason)
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 200)
-
   const detailList = detailFor
     ? all
       .filter((a) => a.studentId === detailFor.sid)
@@ -1369,40 +1365,15 @@ export function AbsencesTab({ classId }: { classId: string }) {
         </div>
       </Modal>
 
-      {/* ── Бележки към отсъствия ── */}
-      <Modal
-        open={notesOpen} onClose={() => setNotesOpen(false)} wide title="Бележки към отсъствията"
-        footer={<button onClick={() => setNotesOpen(false)} className="btn-primary">Затвори</button>}
-      >
-        <div className="space-y-2">
-          {notedAbsences.map((a) => {
-            const s = db.students.find((x) => x.id === a.studentId)
-            return (
-              <div key={a.id} className="flex items-start gap-2.5 rounded-lg border border-ink-200 px-3 py-2.5">
-                <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-white ${
-                  a.excused ? 'bg-[#26c281]' : 'bg-[#e7505a]'
-                }`}>
-                  <Icon name={a.excused ? 'check' : 'close'} size={12} strokeWidth={2.6} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold text-ink-800">
-                    {s?.firstName} {s?.lastName}
-                    <span className="ml-2 font-normal text-ink-500">
-                      {dateOnly(a.date)} · {a.period} ч. · {subjectName(a.subjectId)}
-                    </span>
-                  </p>
-                  <p className="text-[12px] text-ink-600">
-                    {a.excuseReason ? `Мотив: ${a.excuseReason}. ` : ''}{a.note}
-                  </p>
-                </div>
-              </div>
-            )
-          })}
-          {notedAbsences.length === 0 && (
-            <p className="py-6 text-center text-[13px] text-ink-500">Все още няма уважени отсъствия с бележка.</p>
-          )}
-        </div>
-      </Modal>
+      {/* ── Бележки към отсъствията — цял екран по образеца ── */}
+      {notesOpen && klass && (
+        <AbsenceNotesPage
+          klass={klass}
+          students={students}
+          onClose={() => setNotesOpen(false)}
+          onToast={(m) => setToast(m)}
+        />
+      )}
 
       {/* ── зелено съобщение след запис ── */}
       {toast && (
