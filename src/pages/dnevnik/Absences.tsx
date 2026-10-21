@@ -3,7 +3,7 @@ import { useApp } from '../../store/AppContext'
 import { Field, Icon, Input, Modal, Select, Textarea } from '../../components/ui'
 import type { Absence, Klass, ScheduleEntry, Student } from '../../lib/types'
 import { DnTable, EmptyRow, FilterButton, Num, StudentCell, TB, Th, Toolbar, dateOnly } from './shared'
-import { addDays, ddmm, mondayOf } from '../../lib/week'
+import { DAY_NAMES, addDays, ddmm, mondayOf } from '../../lib/week'
 
 /**
  * Раздел „Отсъствия" — по ръководството на референтния дневник.
@@ -245,122 +245,187 @@ function AbsencesAddPage({
   )
 }
 
-// ── Цял екран: седмичен режим (само класен ръководител / администратор) ─────
+// ── Цял екран: администриране по разписанието на класа ──────────────────────
+
+/**
+ * Причините за уважаване, както са в референтния дневник — три кръгчета с
+ * букви. Съответстват на полетата на `Absence`, за да не се налага ново
+ * поле в базата:
+ *   З → закъснение (не се уважава, само се отбелязва)
+ *   С → семейни причини (уважено)
+ *   Д → документ, т.е. извинено (уважено)
+ */
+const REASONS: {
+  code: string
+  label: string
+  tone: string
+  reason: Absence['reason']
+  excused: boolean
+}[] = [
+  { code: 'З', label: 'Закъснение', tone: '#26c281', reason: 'закъснение', excused: false },
+  { code: 'С', label: 'Семейни причини', tone: '#3598dc', reason: 'семейни причини', excused: true },
+  { code: 'Д', label: 'Документ (извинено)', tone: '#e8a33d', reason: 'извинено', excused: true },
+]
+
+/**
+ * „Администрирай" — седмичен режим, свързан с **разписанието на паралелката**.
+ *
+ * Всеки ред е един час от `db.schedule`, а не ученик: „6. 📖 АЕ - Борисова".
+ * В полето вдясно се въвеждат номерата на отсъстващите, разделени със запетая
+ * („6, 15,"). Под часовете за деня има ред „Цял ден" — числата там маркират
+ * отсъствие за целия ден, а не за конкретен час.
+ *
+ * Числата в кръгчетата до всеки ред са „отсъстващи / присъстващи" за часа —
+ * точно както в образеца. Празно поле значи, че за този час още нищо не е
+ * въведено.
+ *
+ * Ако горе е избрана „Причина за уважаване", новите отсъствия се записват
+ * направо уважени, а вече въведените неуважени отсъствия за същите часове се
+ * уважават със същата причина.
+ */
 function WeekAdminPage({
   klass, students, absences, onDone, onBack,
 }: {
   klass: Klass
   students: Student[]
   absences: Absence[]
-  onDone: (added: number, removed: number) => void
+  onDone: (message: string) => void
   onBack: () => void
 }) {
-  const { db, user, isAdmin, addAbsences, deleteAbsence } = useApp()
-  const isClassTeacher = klass.homeroomTeacherId === user?.id
-  const canEditAbsence = (a: Absence) => isAdmin || isClassTeacher || a.teacherId === user?.id
+  const { db, user, addAbsences, excuseAbsences, subjectShort, userName } = useApp()
   const [monday, setMonday] = useState(() => mondayOf(new Date()))
-  const days = useMemo(() => Array.from({ length: 5 }, (_, i) => addDays(monday, i)), [monday])
-  const [cells, setCells] = useState<Record<string, number>>({})
+  const [reason, setReason] = useState<string | null>(null)
+  const [typed, setTyped] = useState<Record<string, string>>({})
 
-  /** Колко часа е отсъствал ученикът за всеки ден от тази седмица. */
-  useEffect(() => {
-    const next: Record<string, number> = {}
-    for (const a of absences) {
-      const idx = days.findIndex((d) => isoOf(d) === a.date)
-      if (idx < 0) continue
-      const key = `${a.studentId}|${idx}`
-      next[key] = (next[key] ?? 0) + (a.wholeDay ? HOURS_PER_DAY : 1)
-    }
-    setCells(next)
-  }, [days, absences])
-
-  const cycleCount = (key: string) => setCells((p) => {
-    const n = ((p[key] ?? 0) + 1) % 4
-    const copy = { ...p }
-    if (n === 0) delete copy[key]
-    else copy[key] = n
-    return copy
-  })
-
-  const [wholeDayNumbers, setWholeDayNumbers] = useState('')
+  const byNumber = useMemo(() => new Map(students.map((s) => [s.number, s])), [students])
 
   /**
-   * Записва разликата, а не нова порция: ако в деня вече има 2 часа
-   * отсъствие, а на екрана пише 3 — добавя се само един. Така отваряне и
-   * „Запази" без промяна не удвоява отсъствията.
+   * Редовете идват от разписанието, а не от списък с ученици. Ден без часове
+   * пак получава 7 реда „Свободен час", за да може да се въведе отсъствие и в
+   * ден, в който разписанието още не е попълнено.
    */
+  const groups = useMemo(
+    () =>
+      [1, 2, 3, 4, 5].map((wd) => {
+        const date = addDays(monday, wd - 1)
+        const iso = isoOf(date)
+        const lessons = db.schedule.filter((s) => s.classId === klass.id && s.day === wd)
+        const maxPeriod = Math.max(7, ...lessons.map((l) => l.period))
+        const rows = Array.from({ length: maxPeriod }, (_, k) => k + 1).map((period) => ({
+          period,
+          key: `${iso}|${period}`,
+          entries: lessons.filter((l) => l.period === period).sort((a, b) => a.id.localeCompare(b.id)),
+        }))
+        return { wd, date, iso, rows, dayKey: `${iso}|day` }
+      }),
+    [db.schedule, klass.id, monday],
+  )
+
+  /** „6, 15," → [6, 15] — само номера, които съществуват в паралелката. */
+  const numbersOf = (key: string) => {
+    const out: number[] = []
+    for (const token of (typed[key] ?? '').split(/[^0-9]+/)) {
+      if (!token) continue
+      const n = parseInt(token, 10)
+      if (byNumber.has(n) && !out.includes(n)) out.push(n)
+    }
+    return out
+  }
+
+  /** Кои ученици вече са маркирани за дадения час (или за целия ден). */
+  const markedIn = (iso: string, slot: number | 'day') => {
+    const set = new Set<string>()
+    for (const a of absences) {
+      if (a.date !== iso) continue
+      if (slot === 'day' ? a.wholeDay : a.wholeDay || a.period === slot) set.add(a.studentId)
+    }
+    return set
+  }
+
+  /** Колко отсъстващи има в реда — от базата плюс написаното, без повторение. */
+  const absentCount = (iso: string, slot: number | 'day', key: string) => {
+    const set = markedIn(iso, slot)
+    let extra = 0
+    for (const n of numbersOf(key)) {
+      const st = byNumber.get(n)
+      if (st && !set.has(st.id)) extra++
+    }
+    return set.size + extra
+  }
+
+  const totalTyped = groups.reduce(
+    (sum, g) => sum + g.rows.reduce((s, r) => s + numbersOf(r.key).length, 0) + numbersOf(g.dayKey).length,
+    0,
+  )
+
   const save = () => {
+    const chosen = REASONS.find((r) => r.code === reason) ?? null
     const rows: Omit<Absence, 'id' | 'createdAt'>[] = []
-    let removed = 0
+    const toExcuse = new Set<string>()
+    let already = 0
 
-    days.forEach((d, idx) => {
-      const iso = isoOf(d)
-      const wd = weekdayOf(iso)
-      const periods = db.schedule
-        .filter((s) => s.classId === klass.id && s.day === wd)
-        .sort((a, b) => a.period - b.period)
-
-      students.forEach((s) => {
-        const target = cells[`${s.id}|${idx}`] ?? 0
-        const existing = absences.filter((a) => a.date === iso && a.studentId === s.id)
-        const have = existing.reduce((sum, a) => sum + (a.wholeDay ? HOURS_PER_DAY : 1), 0)
-
-        if (target > have) {
-          for (let i = have; i < target; i++) {
-            const entry = periods[i]
-            rows.push({
-              studentId: s.id, classId: klass.id, date: iso,
-              period: entry?.period ?? i + 1,
-              subjectId: entry?.subjectId ?? klass.subjectIds[0] ?? '',
-              reason: 'неизвинено', excused: false, wholeDay: false,
-              teacherId: user!.id,
-            })
-          }
-        } else if (target < have) {
-          // махаме първо неуважените и то поотделно, а не „целия ден"
-          const removable = existing
-            .filter((a) => canEditAbsence(a))
-            .sort((a, b) => Number(a.excused) - Number(b.excused) || Number(!!a.wholeDay) - Number(!!b.wholeDay))
-          let left = have
-          for (const a of removable) {
-            if (left <= target) break
-            deleteAbsence(a.id)
-            left -= a.wholeDay ? HOURS_PER_DAY : 1
-            removed++
-          }
+    const add = (iso: string, wholeDay: boolean, period: number, entry: ScheduleEntry | undefined, key: string) => {
+      const nums = numbersOf(key)
+      if (!nums.length) return
+      const existing = new Map<string, Absence>()
+      for (const a of absences) {
+        if (a.date !== iso) continue
+        if (wholeDay || a.wholeDay || a.period === period) existing.set(a.studentId, a)
+      }
+      for (const n of nums) {
+        const st = byNumber.get(n)
+        if (!st) continue
+        const found = existing.get(st.id)
+        if (found) {
+          // вече е маркиран — при избрана причина го уважаваме, иначе нищо
+          if (chosen && !found.excused && found.reason !== chosen.reason) toExcuse.add(found.id)
+          else already++
+          continue
         }
-      })
-    })
+        rows.push({
+          studentId: st.id,
+          classId: klass.id,
+          date: iso,
+          period: wholeDay ? 1 : period,
+          subjectId: entry?.subjectId ?? klass.subjectIds[0] ?? '',
+          reason: chosen?.reason ?? 'неизвинено',
+          excused: chosen?.excused ?? false,
+          wholeDay: wholeDay || undefined,
+          teacherId: user!.id,
+          excuseReason: chosen?.excused ? chosen.label : undefined,
+        })
+      }
+    }
 
+    for (const g of groups) {
+      for (const r of g.rows) {
+        const entry = r.entries[0]
+        add(g.iso, false, r.period, entry, r.key)
+      }
+      add(g.iso, true, 1, undefined, g.dayKey)
+    }
+
+    if (toExcuse.size && chosen) excuseAbsences([...toExcuse], chosen.reason)
     if (rows.length) addAbsences(rows)
-    onDone(rows.length, removed)
+
+    const parts: string[] = []
+    if (rows.length) parts.push(`Успешно добавихте ${rows.length} ${rows.length === 1 ? 'отсъствие' : 'отсъствия'}.`)
+    if (toExcuse.size) parts.push(`Уважени ${toExcuse.size} ${toExcuse.size === 1 ? 'отсъствие' : 'отсъствия'}.`)
+    if (!parts.length) parts.push(already ? 'Тези отсъствия вече са въведени.' : 'Няма промени за запазване.')
+    onDone(parts.join(' '))
   }
 
-  const applyWholeDay = () => {
-    const nums = wholeDayNumbers.split(/[,\s;]+/).map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n))
-    if (!nums.length) return
-    setCells((p) => {
-      const copy = { ...p }
-      students.forEach((s) => {
-        if (!nums.includes(s.number)) return
-        days.forEach((_, idx) => { copy[`${s.id}|${idx}`] = HOURS_PER_DAY })
-      })
-      return copy
-    })
-    setWholeDayNumbers('')
-  }
-
-  const total = Object.values(cells).reduce((a, b) => a + b, 0)
+  const currentWeek = isoOf(mondayOf(new Date())) === isoOf(monday)
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#eef1f2]">
+      {/* горна лента */}
       <div className="flex flex-wrap items-center gap-3 border-b border-ink-200 bg-white px-4 py-2.5 shadow-sm">
         <h2 className="flex min-w-0 items-center gap-2 truncate text-[14.5px] font-bold text-ink-800">
           <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border-[1.5px] border-[#337ab7] text-[11px] font-bold leading-none text-[#337ab7]">i</span>
-          Администриране на отсъствия за {klass.name}
+          Администриране на отсъствия в {klass.name}
         </h2>
         <div className="ml-auto flex items-center gap-2">
-          <span className="rounded-[2px] bg-[#e6f4ea] px-2 py-1 text-[11.5px] font-bold text-[#1f7a45]">Общо {total}</span>
           <button type="button" onClick={onBack} className="db border border-ink-200 bg-ink-50 !text-ink-600 hover:bg-ink-100">
             <Icon name="chevronLeft" size={14} strokeWidth={2.2} /> Назад
           </button>
@@ -370,95 +435,197 @@ function WeekAdminPage({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 border-b border-ink-200 bg-white px-4 py-2.5">
-        <button type="button" onClick={() => setMonday(addDays(monday, -7))} className="db db-blue" title="Предишна седмица">
-          <span className="text-[15px] leading-none">‹</span>
-        </button>
-        <span className="text-[13px] font-semibold text-ink-800">
-          {ddmm(days[0])} – {ddmm(days[4])}.{days[4].getFullYear()}
+      {/* причина за уважаване + навигатор на седмицата */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-ink-200 bg-white px-4 py-2">
+        <span className="text-[12.5px] font-bold text-ink-800">Причина за уважаване:</span>
+        <div className="flex items-center gap-1.5">
+          {REASONS.map((r) => (
+            <button
+              key={r.code}
+              type="button"
+              title={r.label}
+              onClick={() => setReason(reason === r.code ? null : r.code)}
+              className={`grid h-[23px] w-[23px] place-items-center rounded-full border text-[11.5px] font-bold transition ${
+                reason === r.code
+                  ? 'border-transparent text-white shadow-sm'
+                  : 'border-[#c9d4de] bg-white text-[#7d8c98] hover:border-[#9fb3c4] hover:text-ink-700'
+              }`}
+              style={reason === r.code ? { background: r.tone } : undefined}
+            >
+              {r.code}
+            </button>
+          ))}
+        </div>
+        <span className="text-[12px] text-ink-500">
+          {REASONS.find((r) => r.code === reason)?.label ?? 'без уважение — записва се като неуважително'}
         </span>
-        <button type="button" onClick={() => setMonday(addDays(monday, 7))} className="db db-blue" title="Следваща седмица">
-          <span className="text-[15px] leading-none">›</span>
-        </button>
-        <span className="ml-4 text-[12.5px] text-ink-600">Цял ден за номера:</span>
-        <Input
-          value={wholeDayNumbers}
-          onChange={(e) => setWholeDayNumbers(e.target.value)}
-          placeholder="напр. 3, 5, 12"
-          className="!w-[150px] !py-1"
-        />
-        <button type="button" onClick={applyWholeDay} className="db db-teal">Приложи</button>
+
+        <div className="ml-auto flex items-center gap-1.5">
+          {totalTyped > 0 && (
+            <button
+              type="button"
+              onClick={() => setTyped({})}
+              className="mr-1 text-[12px] font-semibold text-[#b42318] hover:underline"
+            >
+              Изчисти ({totalTyped})
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setMonday(addDays(monday, -7))}
+            title="Предишна седмица"
+            className="grid h-[23px] w-[23px] place-items-center rounded-[2px] border border-[#c9d4de] bg-white text-[13px] font-bold leading-none text-[#337ab7] hover:bg-[#f2f7fb]"
+          >
+            ‹
+          </button>
+          <span className="min-w-[128px] text-center text-[12.5px] font-semibold text-ink-800">
+            {ddmm(monday)} – {ddmm(addDays(monday, 4))}.{addDays(monday, 4).getFullYear()}
+          </span>
+          <button
+            type="button"
+            onClick={() => setMonday(addDays(monday, 7))}
+            title="Следваща седмица"
+            className="grid h-[23px] w-[23px] place-items-center rounded-[2px] border border-[#c9d4de] bg-white text-[13px] font-bold leading-none text-[#337ab7] hover:bg-[#f2f7fb]"
+          >
+            ›
+          </button>
+          {!currentWeek && (
+            <button
+              type="button"
+              onClick={() => setMonday(mondayOf(new Date()))}
+              className="ml-1 text-[12px] font-semibold text-[#337ab7] hover:underline"
+            >
+              тази седмица
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        <table className="w-full border-collapse bg-white" style={{ minWidth: 720 }}>
-          <thead>
-            <tr className="bg-[#fbfcfd]">
-              <th className="th w-[42px]">№</th>
-              <th className="th min-w-[190px] text-left">Ученик</th>
-              {days.map((d) => (
-                <th key={isoOf(d)} className="th w-[110px] text-center">
-                  {['Пон', 'Вто', 'Сря', 'Чет', 'Пет'][days.indexOf(d)]} {ddmm(d)}
-                </th>
-              ))}
-              <th className="th w-[100px] text-center">Цял ден</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-ink-100">
-            {students.map((s) => (
-              <tr key={s.id} className="hover:bg-[#f7fbfd]">
-                <td className="td text-[12px] font-bold text-ink-400">{s.number}</td>
-                <td className="td whitespace-nowrap text-[13px]">
-                  {s.firstName} {s.middleName ? `${s.middleName[0]}. ` : ''}{s.lastName}
-                </td>
-                {days.map((_, idx) => {
-                  const n = cells[`${s.id}|${idx}`] ?? 0
+        <table className="w-full border-collapse bg-white" style={{ minWidth: 780 }}>
+          <colgroup>
+            <col style={{ width: 34 }} />
+            <col style={{ width: 400 }} />
+            <col style={{ width: 86 }} />
+            <col />
+          </colgroup>
+          <tbody>
+            {groups.map((g) => (
+              <Fragment key={g.iso}>
+                {g.rows.map((r, i) => {
+                  const absent = absentCount(g.iso, r.period, r.key)
                   return (
-                    <td key={idx} className="border-l border-ink-100 p-0">
-                      <button
-                        type="button"
-                        onClick={() => cycleCount(`${s.id}|${idx}`)}
-                        className={`grid h-[32px] w-full place-items-center transition ${
-                          n ? 'bg-[#fdf6d7] hover:brightness-[0.97]' : 'bg-[#f7f9fa] text-[#9aa7b0] hover:bg-[#eef3f6]'
-                        }`}
-                      >
-                        {n ? (
-                          <span className="inline-grid h-[22px] w-[22px] place-items-center rounded-full bg-[#e7505a] text-[11.5px] font-bold text-white">
-                            {n}
+                    <tr key={r.key} className="border-b border-[#e7ecf1]">
+                      {i === 0 && (
+                        <td
+                          rowSpan={g.rows.length + 1}
+                          className="border-r border-[#cdd9e5] bg-[#dbe5ef] p-0 align-middle"
+                        >
+                          <span
+                            className="block whitespace-nowrap py-2 text-center text-[11.5px] font-bold text-[#3d5a75]"
+                            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                          >
+                            {DAY_NAMES[g.wd - 1]} {ddmm(g.date)}.{g.date.getFullYear()}
                           </span>
-                        ) : '0'}
-                      </button>
-                    </td>
+                        </td>
+                      )}
+                      <td className="px-2 py-[5px] text-[12.5px] text-ink-800">
+                        <span className="font-bold text-ink-400">{r.period}.</span>{' '}
+                        <Icon name="book" size={12} className="inline align-[-1px] text-[#8a99a6]" strokeWidth={2} />{' '}
+                        {r.entries.length === 0 ? (
+                          <span className="text-ink-400">Свободен час</span>
+                        ) : (
+                          r.entries.map((e, k) => (
+                            <span key={e.id}>
+                              {k > 0 && <span className="text-ink-300"> / </span>}
+                              {subjectShort(e.subjectId)}
+                              <span className="text-ink-400"> - </span>
+                              {userName(e.teacherId).split(' ').slice(-1)[0]}
+                            </span>
+                          ))
+                        )}
+                      </td>
+                      <td className="border-l border-[#eef2f6] px-1 py-[3px]">
+                        <div className="flex items-center justify-center gap-1">
+                          {absent > 0 && (
+                            <>
+                              <span
+                                title="Отсъстващи в часа"
+                                className="grid h-[19px] min-w-[19px] place-items-center rounded-full bg-[#3598dc] px-1 text-[11px] font-bold text-white"
+                              >
+                                {absent}
+                              </span>
+                              <span
+                                title="Присъстващи в часа"
+                                className="grid h-[19px] min-w-[19px] place-items-center rounded-full bg-[#b6c2cc] px-1 text-[11px] font-bold text-white"
+                              >
+                                {Math.max(students.length - absent, 0)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-1 py-[3px]">
+                        <input
+                          value={typed[r.key] ?? ''}
+                          onChange={(e) => setTyped((p) => ({ ...p, [r.key]: e.target.value }))}
+                          placeholder="номера, напр. 6, 15"
+                          className="h-[26px] w-full rounded-[2px] border border-[#cfd8e0] bg-white px-2 text-[12.5px] text-ink-800 outline-none transition placeholder:text-[11.5px] placeholder:text-ink-300 focus:border-[#3598dc] focus:ring-1 focus:ring-[#3598dc]/25"
+                        />
+                      </td>
+                    </tr>
                   )
                 })}
-                <td className="border-l border-ink-100 p-0">
-                  <button
-                    type="button"
-                    onClick={() => setCells((p) => {
-                      const copy = { ...p }
-                      const on = days.every((_, idx) => (copy[`${s.id}|${idx}`] ?? 0) >= HOURS_PER_DAY)
-                      days.forEach((_, idx) => {
-                        if (on) delete copy[`${s.id}|${idx}`]
-                        else copy[`${s.id}|${idx}`] = HOURS_PER_DAY
-                      })
-                      return copy
-                    })}
-                    className={`h-[32px] w-full text-[11.5px] font-semibold transition ${
-                      days.every((_, idx) => (cells[`${s.id}|${idx}`] ?? 0) >= HOURS_PER_DAY)
-                        ? 'bg-[#e7505a] text-white'
-                        : 'bg-[#f7f9fa] text-[#7d8c98] hover:bg-[#eef3f6]'
-                    }`}
-                  >
-                    {days.every((_, idx) => (cells[`${s.id}|${idx}`] ?? 0) >= HOURS_PER_DAY) ? 'цяла седмица' : '—'}
-                  </button>
-                </td>
-              </tr>
+
+                {/* ред „Цял ден" — отсъствие за всички часове на деня */}
+                {(() => {
+                  const absent = absentCount(g.iso, 'day', g.dayKey)
+                  return (
+                    <tr className="border-b-2 border-[#c9d4e0]">
+                      <td className="bg-[#dfe3fa] px-2 py-[5px] text-center text-[12px] font-bold text-[#4a5a9c]">
+                        Цял ден
+                      </td>
+                      <td className="bg-[#dfe3fa] px-1 py-[3px]">
+                        <div className="flex items-center justify-center gap-1">
+                          {absent > 0 && (
+                            <>
+                              <span
+                                title="Отсъстващи за целия ден"
+                                className="grid h-[19px] min-w-[19px] place-items-center rounded-full bg-[#3598dc] px-1 text-[11px] font-bold text-white"
+                              >
+                                {absent}
+                              </span>
+                              <span
+                                title="Присъстващи"
+                                className="grid h-[19px] min-w-[19px] place-items-center rounded-full bg-[#b6c2cc] px-1 text-[11px] font-bold text-white"
+                              >
+                                {Math.max(students.length - absent, 0)}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-1 py-[3px]">
+                        <input
+                          value={typed[g.dayKey] ?? ''}
+                          onChange={(e) => setTyped((p) => ({ ...p, [g.dayKey]: e.target.value }))}
+                          placeholder="номера за целия ден"
+                          className="h-[26px] w-full rounded-[2px] border border-[#cfd8e0] bg-white px-2 text-[12.5px] text-ink-800 outline-none transition placeholder:text-[11.5px] placeholder:text-ink-300 focus:border-[#3598dc] focus:ring-1 focus:ring-[#3598dc]/25"
+                        />
+                      </td>
+                    </tr>
+                  )
+                })()}
+              </Fragment>
             ))}
           </tbody>
         </table>
-        <p className="mt-3 text-[11.5px] text-ink-500">
-          Клик върху числото увеличава отсъствията за деня (0 → 1 → 2 → 3 → 0). Числото е
-          колко часа е отсъствал ученикът. „Цяла седмица" маркира всички дни наведнъж.
+
+        <p className="mt-3 max-w-[900px] text-[11.5px] leading-relaxed text-ink-500">
+          Въведете номерата на отсъстващите ученици, разделени със запетая. Редовете са часовете
+          от разписанието на паралелката, така че отсъствието се записва за точния предмет и
+          учител. За отсъствие през целия ден използвайте реда <b>„Цял ден"</b> под часовете.
+          Номерата в кръгчетата показват колко ученика отсъстват и колко присъстват в часа.
         </p>
       </div>
     </div>
@@ -696,7 +863,13 @@ export function AbsencesTab({ classId }: { classId: string }) {
                 >
                   Уважи
                 </TB>
-                <TB icon="settings" tone="blue" onClick={() => setAdminOpen(true)}>Администрирай</TB>
+                <TB
+                  icon="calendar" tone="teal"
+                  title="Администриране по разписанието на класа — редове по часове, номера на ученици"
+                  onClick={() => setAdminOpen(true)}
+                >
+                  Администрирай
+                </TB>
               </>
             )}
           </>
@@ -857,15 +1030,9 @@ export function AbsencesTab({ classId }: { classId: string }) {
           klass={klass}
           students={students}
           absences={all}
-          onDone={(added, removed) => {
+          onDone={(message) => {
             setAdminOpen(false)
-            setToast(
-              added
-                ? `Успешно добавихте ${added} ${added === 1 ? 'отсъствие' : 'отсъствия'}.`
-                : removed
-                  ? `Премахнахте ${removed} ${removed === 1 ? 'отсъствие' : 'отсъствия'}.`
-                  : 'Няма промени за запазване.',
-            )
+            setToast(message)
           }}
           onBack={() => setAdminOpen(false)}
         />
