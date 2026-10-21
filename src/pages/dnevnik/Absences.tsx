@@ -262,6 +262,227 @@ function AbsencesAddPage({
   )
 }
 
+// ── Цял екран: уважаване на отсъствия за една дата ──────────────────────────
+
+/** Причини за уважаване — падащото меню от референтния екран. */
+const EXCUSE_REASONS: { label: string; kind: Absence['reason'] }[] = [
+  { label: 'Здравословни', kind: 'извинено' },
+  { label: 'Семейни причини', kind: 'семейни причини' },
+  { label: 'Учебни и спортни дейности', kind: 'извинено' },
+  { label: 'Други', kind: 'извинено' },
+]
+
+/**
+ * Клетка в екрана за уважаване. Цветовете са измерени от образеца:
+ * сиво „Присъс", оранжево „Закъс", коралово „Неуваж".
+ */
+const EXC_CELL: Record<'присъства' | 'закъснение' | 'неуважено' | 'уважено', { label: string; bg: string; fg: string }> = {
+  'присъства': { label: 'Присъс', bg: '#e8e8e8', fg: '#8a8a8a' },
+  'закъснение': { label: 'Закъс', bg: '#eeb667', fg: '#ffffff' },
+  'неуважено': { label: 'Неуваж', bg: '#f4726d', fg: '#ffffff' },
+  'уважено': { label: 'Уваж', bg: '#26c281', fg: '#ffffff' },
+}
+
+type ExcStatus = keyof typeof EXC_CELL
+
+/**
+ * „Уважи" от лентата — цял екран по образеца.
+ *
+ * Редовете са учениците, колоните — часовете от разписанието за избраната
+ * дата. Клетката показва какво е въведено; клик върху „Закъс" или „Неуваж"
+ * маркира отсъствието (избледнява), а „✓ Уважи" записва избраните с причината
+ * и коментара отгоре.
+ */
+function ExcusePage({
+  klass, students, absences, onDone, onBack,
+}: {
+  klass: Klass
+  students: Student[]
+  absences: Absence[]
+  onDone: (message: string) => void
+  onBack: () => void
+}) {
+  const { db, subjectShort, userName, excuseAbsences } = useApp()
+  const [date, setDate] = useState(todayISO())
+  const [reasonIdx, setReasonIdx] = useState(0)
+  const [comment, setComment] = useState('')
+  const [picked, setPicked] = useState<Record<string, true>>({})
+  const [warn, setWarn] = useState('')
+
+  /** Колоните са часовете от разписанието за този ден от седмицата. */
+  const columns = useMemo(() => {
+    const wd = weekdayOf(date)
+    const list = db.schedule
+      .filter((s) => s.classId === klass.id && s.day === wd)
+      .sort((a, b) => a.period - b.period)
+    if (list.length) return list
+    return Array.from({ length: 7 }, (_, i) => ({
+      id: `free-${i + 1}`, classId: klass.id, day: wd as 1, period: i + 1,
+      subjectId: '', teacherId: '',
+    })) as ScheduleEntry[]
+  }, [db.schedule, klass.id, date])
+
+  /** Всички отсъствия на ученика за дадения час (включително „цял ден"). */
+  const cellsOf = (studentId: string, period: number) =>
+    absences.filter((a) => a.date === date && a.studentId === studentId && (a.wholeDay || a.period === period))
+
+  const statusOf = (list: Absence[]): ExcStatus => {
+    if (list.some((a) => !a.excused && a.reason !== 'закъснение')) return 'неуважено'
+    if (list.some((a) => a.reason === 'закъснение' && !a.excused)) return 'закъснение'
+    if (list.some((a) => a.excused)) return 'уважено'
+    return 'присъства'
+  }
+
+  const toggle = (list: Absence[]) => {
+    const ids = list.filter((a) => !a.excused).map((a) => a.id)
+    if (!ids.length) return
+    setWarn('')
+    setPicked((p) => {
+      const next = { ...p }
+      const on = ids.every((id) => next[id])
+      ids.forEach((id) => { if (on) delete next[id]; else next[id] = true })
+      return next
+    })
+  }
+
+  const chosen = Object.keys(picked).length
+  const total = absences.filter((a) => a.date === date).length
+
+  const save = () => {
+    const ids = Object.keys(picked)
+    if (!ids.length) {
+      setWarn('Изберете поне едно отсъствие — кликнете върху „Закъс" или „Неуваж".')
+      return
+    }
+    const r = EXCUSE_REASONS[reasonIdx]
+    excuseAbsences(ids, r.kind, comment || undefined, r.label)
+    onDone(`Уважени ${ids.length} ${ids.length === 1 ? 'отсъствие' : 'отсъствия'}.`)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      {/* горна лента */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-ink-200 bg-white px-4 py-2.5 shadow-sm">
+        <h2 className="flex min-w-0 items-center gap-2 truncate text-[14.5px] font-bold text-ink-800">
+          <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full border-[1.5px] border-[#337ab7] text-[11px] font-bold leading-none text-[#337ab7]">i</span>
+          Уважаване на отсъствия в {klass.name}
+        </h2>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPicked({})}
+            title="Изчисти избора"
+            className="inline-flex items-center gap-1.5 rounded-[2px] bg-[#337ab7] px-2.5 py-[5px] text-[12.5px] font-semibold text-white transition hover:brightness-110"
+          >
+            Избрани
+            <span className="inline-grid h-[17px] min-w-[17px] place-items-center rounded-[2px] bg-white/25 px-1 text-[11px] font-bold">
+              {chosen}
+            </span>
+          </button>
+          <button type="button" onClick={onBack} className="db border border-ink-200 bg-ink-50 !text-ink-600 hover:bg-ink-100">
+            <Icon name="chevronLeft" size={14} strokeWidth={2.2} /> Назад
+          </button>
+          <button type="button" onClick={save} className="db db-green">
+            <Icon name="check" size={14} strokeWidth={2.4} /> Уважи
+          </button>
+        </div>
+      </div>
+
+      {/* дата / причина / коментар */}
+      <div className="border-b border-ink-200 bg-white px-4 py-3">
+        <div className="grid items-center gap-y-2" style={{ gridTemplateColumns: '190px 340px' }}>
+          <div className="pr-3 text-right text-[12.5px] font-bold text-ink-800">За дата</div>
+          <Input
+            type="date" value={date}
+            onChange={(e) => { setDate(e.target.value); setPicked({}) }}
+            className="!py-1"
+          />
+
+          <div className="pr-3 text-right text-[12.5px] font-bold text-ink-800">Причини</div>
+          <Select value={reasonIdx} onChange={(e) => setReasonIdx(Number(e.target.value))} className="!py-1">
+            {EXCUSE_REASONS.map((r, i) => <option key={r.label} value={i}>{r.label}</option>)}
+          </Select>
+
+          <div className="pr-3 text-right text-[12.5px] font-bold text-ink-800">Коментар</div>
+          <Input value={comment} onChange={(e) => setComment(e.target.value)} className="!py-1" />
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
+        <table className="w-full border-collapse bg-white" style={{ minWidth: 880 }}>
+          <thead>
+            <tr>
+              <th className="w-[290px]" />
+              {columns.map((c) => (
+                <th key={c.id} className="p-1 align-bottom">
+                  <div className="mx-auto flex h-[150px] items-end justify-center">
+                    <span
+                      className="text-[11.5px] font-bold leading-tight text-[#333333]"
+                      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                    >
+                      {c.period}.{' '}
+                      <Icon name="book" size={11} className="inline align-[-1px]" strokeWidth={2} />
+                      {' '}
+                      {c.subjectId ? subjectShort(c.subjectId) : '—'}
+                      {c.teacherId ? ` - ${userName(c.teacherId).split(' ').slice(-1)[0]}` : ''}
+                    </span>
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {students.map((s) => (
+              <tr key={s.id}>
+                <td className="py-[3px] pr-2 text-[12.5px] whitespace-nowrap">
+                  <span className="font-bold text-ink-400">{s.number}.</span>{' '}
+                  {s.firstName} {s.middleName ? `${s.middleName[0]}. ` : ''}{s.lastName}
+                </td>
+                {columns.map((c) => {
+                  const list = cellsOf(s.id, c.period)
+                  const st = statusOf(list)
+                  const style = EXC_CELL[st]
+                  const on = list.some((a) => picked[a.id])
+                  return (
+                    <td key={c.id} className="border-l border-white p-0">
+                      <button
+                        type="button"
+                        disabled={st === 'присъства' || st === 'уважено'}
+                        onClick={() => toggle(list)}
+                        title={st === 'присъства' ? 'Няма отсъствие' : st === 'уважено' ? 'Вече е уважено' : 'Маркирай за уважаване'}
+                        className={`h-[26px] w-full text-[11.5px] font-semibold transition ${
+                          st === 'присъства' || st === 'уважено' ? 'cursor-default' : 'hover:brightness-[0.96]'
+                        } ${on ? 'opacity-45' : ''}`}
+                        style={{ background: style.bg, color: style.fg }}
+                      >
+                        {style.label}
+                      </button>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+            {students.length === 0 && (
+              <tr>
+                <td colSpan={columns.length + 1} className="py-8 text-center text-[13px] text-ink-500">
+                  В паралелката няма активни ученици.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+
+        <p className="mt-3 text-[11.5px] leading-relaxed text-ink-500">
+          Клик върху <b>Закъс</b> или <b>Неуваж</b> маркира отсъствието — то избледнява.
+          След това натиснете <b>✓ Уважи</b> и избраните отсъствия се уважават с причината и
+          коментара отгоре. За {dateOnly(date)} има {total} {total === 1 ? 'отсъствие' : 'отсъствия'}.
+        </p>
+        {warn && <p className="mt-1 text-[11.5px] font-semibold text-[#b42318]">{warn}</p>}
+      </div>
+    </div>
+  )
+}
+
 // ── Цял екран: администриране по разписанието на класа ──────────────────────
 
 /**
@@ -766,6 +987,7 @@ export function AbsencesTab({ classId }: { classId: string }) {
 
   const [adding, setAdding] = useState(false)
   const [adminOpen, setAdminOpen] = useState(false)
+  const [excuseOpen, setExcuseOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
   const [filter, setFilter] = useState<'всички' | 'неуважителни' | 'закъснения' | 'уважени'>('всички')
   const [picked, setPicked] = useState<Record<string, boolean>>({})
@@ -910,14 +1132,9 @@ export function AbsencesTab({ classId }: { classId: string }) {
             {canAdmin && (
               <>
                 <TB
-                  icon="check" tone="green" disabled={!pickedIds.length}
-                  onClick={() => {
-                    const list = all.filter((a) => pickedIds.includes(a.studentId) && !a.excused && a.reason !== 'закъснение')
-                    if (!list.length) { setToast('Няма неуважителни отсъствия за избраните ученици.'); return }
-                    list.forEach((a) => excuseAbsences([a.id], 'извинено'))
-                    setPicked({})
-                    setToast(`Уважени ${list.length} отсъствия.`)
-                  }}
+                  icon="check" tone="green"
+                  title="Уважаване по разписанието на класа за избрана дата"
+                  onClick={() => setExcuseOpen(true)}
                 >
                   Уважи
                 </TB>
@@ -1085,6 +1302,21 @@ export function AbsencesTab({ classId }: { classId: string }) {
           onSave={saveDay}
           onBack={() => setAdding(false)}
           onAdmin={() => { setAdding(false); setAdminOpen(true) }}
+        />
+      )}
+
+      {/* ── цял екран: уважаване за дата ── */}
+      {excuseOpen && klass && (
+        <ExcusePage
+          klass={klass}
+          students={students}
+          absences={all}
+          onDone={(message) => {
+            setExcuseOpen(false)
+            setPicked({})
+            setToast(message)
+          }}
+          onBack={() => setExcuseOpen(false)}
         />
       )}
 

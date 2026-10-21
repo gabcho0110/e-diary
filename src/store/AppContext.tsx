@@ -58,7 +58,7 @@ interface Ctx {
   setAbsenceReason: (id: string, reason: Absence['reason'], excused: boolean) => void
   deleteAbsence: (id: string) => void
   /** групово уважаване — действието „Уважи" от лентата на раздел Отсъствия */
-  excuseAbsences: (ids: string[], reason: Absence['reason'], note?: string) => void
+  excuseAbsences: (ids: string[], reason: Absence['reason'], note?: string, label?: string) => void
   addNote: (n: Omit<Note, 'id'>) => void
   deleteNote: (id: string) => void
   addExam: (e: Omit<Exam, 'id'>) => void
@@ -451,7 +451,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (i >= 0) d.absences[i] = { ...d.absences[i], reason, excused }
         }),
       deleteAbsence: (id) => update((d) => { d.absences = d.absences.filter((a) => a.id !== id) }),
-      excuseAbsences: (ids, reason, note) =>
+      excuseAbsences: (ids, reason, note, label) =>
         update((d) => {
           const set = new Set(ids)
           d.absences = d.absences.map((a) =>
@@ -460,7 +460,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                   ...a,
                   reason,
                   excused: reason !== 'неизвинено' && reason !== 'закъснение',
-                  excuseReason: reason === 'извинено' ? 'Извинено' : reason === 'семейни причини' ? 'Семейни причини' : a.excuseReason,
+                  excuseReason: label
+                    ?? (reason === 'извинено' ? 'Извинено' : reason === 'семейни причини' ? 'Семейни причини' : a.excuseReason),
                   note: note ?? a.note,
                 }
               : a,
