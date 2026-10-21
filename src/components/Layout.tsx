@@ -50,14 +50,14 @@ function ClassGrid({
   }
 
   return (
-    <div className="mb-1 space-y-[3px]">
+    <div className="mb-1 space-y-[7px]">
       {groups.map((g) => (
         <div key={g.grade} className="flex items-center gap-1">
-          <span className="w-[32px] shrink-0 text-right text-[11.5px] font-semibold leading-[20px] text-white/60">
+          <span className="w-[40px] shrink-0 text-right text-[14px] font-bold leading-[28px] text-white/75">
             {g.grade}
           </span>
-          <span className="text-[11px] leading-[20px] text-white/35">-</span>
-          <div className="flex flex-wrap gap-[3px]">
+          <span className="text-[13px] leading-[28px] text-white/35">-</span>
+          <div className="flex flex-wrap gap-[4px]">
             {g.items.map(({ klass, letter }) => {
               const on = klass.id === activeId
               const home = homeroomIds.has(klass.id)
@@ -67,7 +67,7 @@ function ClassGrid({
                   onClick={() => onPick(klass.id)}
                   title={`${shortClassName(klass.name)}${home ? ' (мой клас)' : ''}`}
                   aria-current={on ? 'page' : undefined}
-                  className={`h-[20px] min-w-[21px] rounded-[2px] px-1 text-[11.5px] font-bold leading-none transition ${
+                  className={`h-[28px] min-w-[30px] rounded-[3px] px-1.5 text-[13.5px] font-bold leading-none transition ${
                     on
                       ? 'bg-white text-[#2b6ca3] shadow-sm'
                       : home
@@ -102,43 +102,51 @@ function DnevnikSubmenu({ onNavigate }: { onNavigate: () => void }) {
   const isFamily = !!user?.roles.some((r) => r === 'parent' || r === 'student')
   const child = isFamily ? myChildren[0] : undefined
 
-  /** Класът, на който потребителят е класен ръководител — най-важният в менюто. */
-  const homeroom = myClasses.find((c) => c.homeroomTeacherId === user?.id)
-
-  /*
-    Собственият клас се показва най-горе като „11А (мой клас)" и НЕ се
-    повтаря в мрежата отдолу — както е в референтния дневник.
-  */
-  const otherClasses = useMemo(
-    () => (homeroom ? myClasses.filter((c) => c.id !== homeroom.id) : myClasses),
-    [myClasses, homeroom],
+  /**
+   * Всички класове, на които потребителят е класен ръководител — показват се
+   * най-горе като „6В (мой клас)". Може да са няколко: един учител често е
+   * класен на повече от една паралелка.
+   */
+  const homerooms = useMemo(
+    () => myClasses.filter((c) => c.homeroomTeacherId === user?.id),
+    [myClasses, user],
   )
 
+  /*
+    Собствените класове стоят най-горе и НЕ се повтарят в мрежата отдолу —
+    както е в референтния дневник.
+  */
+  const otherClasses = useMemo(() => {
+    const mine = new Set(homerooms.map((c) => c.id))
+    return myClasses.filter((c) => !mine.has(c.id))
+  }, [myClasses, homerooms])
+
   const homeroomIds = useMemo(
-    () => new Set(myClasses.filter((c) => c.homeroomTeacherId === user?.id).map((c) => c.id)),
-    [myClasses, user],
+    () => new Set(homerooms.map((c) => c.id)),
+    [homerooms],
   )
 
   const go = (to: string) => { navigate(to); onNavigate() }
 
   return (
     <div className="mb-1 ml-[13px] border-l border-white/20 pl-1.5">
-      {homeroom && (
+      {homerooms.map((h) => (
         <button
-          onClick={() => go(`/dnevnik?class=${homeroom.id}`)}
-          title={`${shortClassName(homeroom.name)} (мой клас)`}
-          className={`mb-1 flex w-full items-center gap-2 rounded-[3px] py-[7px] pl-1 pr-2 text-left text-[13px] font-bold transition ${
-            onDnevnik && activeClass === homeroom.id
+          key={h.id}
+          onClick={() => go(`/dnevnik?class=${h.id}`)}
+          title={`${shortClassName(h.name)} (мой клас)`}
+          className={`mb-1 flex w-full items-center gap-2 rounded-[3px] py-[8px] pl-1 pr-2 text-left text-[13.5px] font-bold transition ${
+            onDnevnik && activeClass === h.id
               ? 'bg-white/25 text-white'
               : 'text-white hover:bg-white/10'
           }`}
         >
-          <Icon name="users" size={16} className="shrink-0 opacity-85" />
+          <Icon name="users" size={17} className="shrink-0 opacity-85" />
           <span className="min-w-0 flex-1 truncate">
-            {shortClassName(homeroom.name)} <span className="font-semibold">(мой клас)</span>
+            {shortClassName(h.name)} <span className="font-semibold">(мой клас)</span>
           </span>
         </button>
-      )}
+      ))}
 
       {child && (
         <div className="mb-1 flex items-center gap-2 rounded-[3px] px-2 py-[6px] text-[12.5px] font-semibold text-white">
