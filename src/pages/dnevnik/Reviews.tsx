@@ -51,18 +51,18 @@ export function ReviewsTab({ classId }: { classId: string }) {
       .sort((a, b) => b.list.length - a.list.length)
   }
 
+  /**
+   * Панелът се отваря само с кръгчетата — картата с детайлите се показва
+   * едва след клик върху конкретна значка (втори клик я скрива).
+   */
   const openPanel = (sid: string, kind: ReviewKind) => {
     setEditText(null)
-    setOpen((p) => {
-      if (p && p.studentId === sid && p.kind === kind) return null
-      const first = grouped(sid, kind)[0]?.badge ?? null
-      return { studentId: sid, kind, badge: first }
-    })
+    setOpen((p) => (p && p.studentId === sid && p.kind === kind ? null : { studentId: sid, kind, badge: null }))
   }
 
   const pickBadge = (badge: string) => {
     setEditText(null)
-    setOpen((p) => (p ? { ...p, badge } : p))
+    setOpen((p) => (p ? { ...p, badge: p.badge === badge ? null : badge } : p))
   }
 
   const authorOf = (n: Note) => {
@@ -88,9 +88,7 @@ export function ReviewsTab({ classId }: { classId: string }) {
   const renderPanel = (sid: string, kind: ReviewKind) => {
     const tone = TONE[kind]
     const items = grouped(sid, kind)
-    const sel = open?.badge && items.some((i) => i.badge === open.badge)
-      ? open.badge
-      : items[0]?.badge ?? null
+    const sel = open?.badge && items.some((i) => i.badge === open.badge) ? open.badge : null
     const list = items.find((i) => i.badge === sel)?.list ?? []
     const note = list[0]
     const badge = sel ? findBadge(sel, kind) : undefined
@@ -143,6 +141,12 @@ export function ReviewsTab({ classId }: { classId: string }) {
                   )
                 })}
               </div>
+            )}
+
+            {!note && items.length > 0 && (
+              <p className="mt-4 text-center text-[11.5px] text-ink-600">
+                Кликнете върху значка, за да видите описанието и кой го е въвел.
+              </p>
             )}
 
             {note && (
