@@ -3,6 +3,7 @@ import { useApp } from '../store/AppContext'
 import { Icon } from '../components/ui'
 import { shortClassName } from '../lib/classes'
 import { DAY_NAMES, addDays, ddmm, isoWeek, mondayOf, periodRange } from '../lib/week'
+import { isoOf, weekdayOf } from '../lib/schedule'
 
 /**
  * „Моето разписание" — седмицата на самия потребител.
@@ -11,7 +12,24 @@ import { DAY_NAMES, addDays, ddmm, isoWeek, mondayOf, periodRange } from '../lib
  * родителят и ученикът — разписанието на своето дете. Екранът никога не
  * показва разписанието на паралелка на мястото на личното: ако за профила
  * няма въведени часове, това се казва изрично и се показва къде се въвеждат.
+ *
+ * Източникът е `db.lessons` — разписанието по дати, създадено в
+ * „Администрация" → „Седмични разписания". Ако за тази седмица няма такова,
+ * се показва седмичният шаблон (`db.schedule`).
  */
+
+/** Един урок, приведен до общ вид — независимо от кой източник идва. */
+interface Slot {
+  id: string
+  classId: string
+  subjectId: string
+  roomId?: string
+  group?: string
+  tag?: string
+  from: string
+  to: string
+}
+
 export default function MoyatRazpisanie() {
   const { db, user, myClasses, myChildren, isStaff } = useApp()
   const [offset, setOffset] = useState(0)
@@ -19,18 +37,80 @@ export default function MoyatRazpisanie() {
   const isFamily = !!user?.roles.some((r) => r === 'parent' || r === 'student')
   const child = isFamily ? myChildren[0] : undefined
 
-  const myLessons = useMemo(() => {
-    if (!user) return []
+  const monday = useMemo(() => addDays(mondayOf(new Date()), offset * 7), [offset])
+  const week = isoWeek(monday)
+  const weekdays = DAY_NAMES.map((_, i) => addDays(monday, i))
+  const weekIso = weekdays.map(isoOf)
+
+  /** Паралелките, които потребителят вижда (дете или преподавани). */
+  const classIds = useMemo(() => {
+    if (!user) return new Set<string>()
     if (isFamily) {
-      const classIds = new Set(
+      return new Set(
         (user.childrenIds ?? (user.studentId ? [user.studentId] : []))
           .map((sid) => db.students.find((s) => s.id === sid)?.classId)
           .filter(Boolean) as string[],
       )
-      return db.schedule.filter((s) => classIds.has(s.classId))
     }
+    return new Set(myClasses.map((c) => c.id))
+  }, [user, isFamily, db.students, myClasses])
+
+  /** Разписанието по дати за показваната седмица. */
+  const dated = useMemo(
+    () =>
+      db.lessons.filter(
+        (l) =>
+          weekIso.includes(l.date) &&
+          classIds.has(l.classId) &&
+          (isFamily || l.teacherId === user?.id),
+      ),
+    [db.lessons, classIds, user, isFamily, weekIso.join()],
+  )
+
+  const template = useMemo(() => {
+    if (!user) return []
+    if (isFamily) return db.schedule.filter((s) => classIds.has(s.classId))
     return db.schedule.filter((s) => s.teacherId === user.id)
-  }, [db.schedule, db.students, user, isFamily])
+  }, [db.schedule, classIds, user, isFamily])
+
+  /**
+   * Часовете се групират по (ден, час), а не се взима само първият.
+   * В демото един учител преподава на няколко паралелки и се случва два
+   * урока да попаднат в един и същ слот — ако показвахме само първия, от
+   * „34 часа седмично" на екрана щяха да се виждат едва 11.
+   */
+  const bySlot = useMemo(() => {
+    const m = new Map<string, Slot[]>()
+    const push = (key: string, s: Slot) => {
+      const arr = m.get(key)
+      if (arr) arr.push(s)
+      else m.set(key, [s])
+    }
+    if (dated.length) {
+      dated.forEach((l) =>
+        push(`${weekdayOf(l.date)}-${l.period}`, {
+          id: l.id, classId: l.classId, subjectId: l.subjectId, roomId: l.roomId,
+          group: l.groupLabel, from: l.start, to: l.end,
+        }),
+      )
+    } else {
+      template.forEach((s) => {
+        const [from, to] = periodRange(s.period, 1)
+        push(`${s.day}-${s.period}`, {
+          id: s.id, classId: s.classId, subjectId: s.subjectId, roomId: s.roomId,
+          group: s.group, tag: s.tag, from, to,
+        })
+      })
+    }
+    return m
+  }, [dated, template])
+
+  const total = useMemo(() => [...bySlot.values()].reduce((a, l) => a + l.length, 0), [bySlot])
+  const empty = total === 0
+
+  const maxPeriod = Math.max(4, ...[...bySlot.keys()].map((k) => Number(k.split('-')[1])))
+
+  const slot = (day: number, period: number) => bySlot.get(`${day}-${period}`) ?? []
 
   /**
    * Какво преподава по план — за да не е празен екранът, когато още няма
@@ -46,33 +126,6 @@ export default function MoyatRazpisanie() {
     }
     return rows
   }, [myClasses, user, isFamily])
-
-  const empty = myLessons.length === 0
-
-  const monday = useMemo(() => addDays(mondayOf(new Date()), offset * 7), [offset])
-  const week = isoWeek(monday)
-  const weekdays = DAY_NAMES.map((_, i) => addDays(monday, i))
-
-  const maxPeriod = Math.max(4, ...myLessons.map((s) => s.period))
-
-  /**
-   * Часовете се групират по (ден, час), а не се взима само първият.
-   * В демото един учител преподава на няколко паралелки и се случва два
-   * урока да попаднат в един и същ слот — ако показвахме само първия, от
-   * „34 часа седмично" на екрана щяха да се виждат едва 11.
-   */
-  const bySlot = useMemo(() => {
-    const m = new Map<string, typeof myLessons>()
-    for (const s of myLessons) {
-      const key = `${s.day}-${s.period}`
-      const arr = m.get(key)
-      if (arr) arr.push(s)
-      else m.set(key, [s])
-    }
-    return m
-  }, [myLessons])
-
-  const slot = (day: number, period: number) => bySlot.get(`${day}-${period}`) ?? []
 
   const className = (id: string) => {
     const k = db.classes.find((c) => c.id === id)
@@ -141,7 +194,7 @@ export default function MoyatRazpisanie() {
           <p className="mt-0.5 text-[12.5px] text-ink-500">
             {isFamily ? 'Разписание на класа' : 'Разписание на часовете, които преподавате'}
             {' · '}
-            {myLessons.length} часа седмично
+            {total} {total === 1 ? 'час' : 'часа'} седмично
           </p>
         </div>
       </div>
@@ -206,11 +259,10 @@ export default function MoyatRazpisanie() {
                         style={{ background: '#c9ecab' }}
                       >
                         {list.map((e, li) => {
-                          const klass = db.classes.find((c) => c.id === e.classId)
-                          const [from, to] = periodRange(p, klass?.shift ?? 1)
                           const room = db.rooms.find((r) => r.id === e.roomId)
                           const subject = db.subjects.find((s) => s.id === e.subjectId)
                           const roomText = room ? `${room.name}${room.floor ? ` (Етаж ${room.floor})` : ''}` : '—'
+                          const { from, to } = e
 
                           // няколко паралелки в един час → един ред на урок, иначе
                           // клетката става твърде висока, за да се чете
