@@ -203,7 +203,7 @@ export function ReviewWizard({ classId, klass, onClose }: {
         </section>
 
         {/* ── 2. Избери значка ─────────────────────────────────────────── */}
-        <section className="flex min-w-0 flex-col rounded-[3px] border border-[#c8d4dc] bg-white lg:w-[44%]">
+        <section className="flex min-w-0 flex-col rounded-[3px] border border-[#c8d4dc] bg-white lg:w-[43%]">
           <header className="flex items-center gap-2 bg-[#3d9fd6] px-3 py-[7px] text-white">
             <Icon name="search" size={14} strokeWidth={2.4} />
             <h3 className="text-[13px] font-bold">2. Избери значка</h3>
@@ -273,7 +273,7 @@ export function ReviewWizard({ classId, klass, onClose }: {
         </section>
 
         {/* ── 3. Въведи коментар ───────────────────────────────────────── */}
-        <section className="flex min-w-0 flex-col rounded-[3px] border border-[#c8d4dc] bg-white lg:w-[27%] lg:min-w-[250px]">
+        <section className="flex min-w-0 flex-col rounded-[3px] border border-[#c8d4dc] bg-white lg:w-[25%] lg:min-w-[240px]">
           <header className="flex items-center gap-2 bg-[#3d9fd6] px-3 py-[7px] text-white">
             <Icon name="edit" size={14} strokeWidth={2.4} />
             <h3 className="text-[13px] font-bold">3. Въведи коментар</h3>
@@ -284,7 +284,7 @@ export function ReviewWizard({ classId, klass, onClose }: {
             )}
           </header>
 
-          <div className="flex flex-1 flex-col gap-2 p-2.5">
+          <div className="flex flex-1 flex-col gap-2.5 p-3">
             {picked.length === 0 ? (
               <div className="grid flex-1 place-items-center rounded-[2px] border border-dashed border-[#9fc3de] px-4 py-10 text-center">
                 <p className="text-[12.5px] leading-relaxed text-ink-400">
@@ -300,42 +300,40 @@ export function ReviewWizard({ classId, klass, onClose }: {
                   return (
                     <div
                       key={keyOf(b)}
-                      className={`rounded-[3px] border p-2 ${
+                      className={`flex flex-col items-center gap-2 rounded-[3px] border px-2.5 pb-2.5 pt-3 ${
                         bad ? 'border-[#e7505a] bg-[#fdf4f4]' : 'border-[#dbe5ec] bg-[#fbfdfe]'
                       }`}
                     >
-                      <div className="mb-1.5 flex items-start gap-2">
-                        <span className="min-w-0 flex-1 pt-1 text-[12px] font-bold leading-snug text-ink-800">
-                          {b.name}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => toggleBadge(b)}
-                          title="Премахни отзива — значката се връща в средата"
-                          className="group relative shrink-0 rounded-full transition hover:scale-105 active:scale-95"
+                      <button
+                        type="button"
+                        onClick={() => toggleBadge(b)}
+                        title="Премахни отзива — значката се връща в средата"
+                        className="group relative rounded-full transition hover:scale-105 active:scale-95"
+                      >
+                        <span
+                          className="grid h-[56px] w-[56px] place-items-center rounded-full border-[4px]
+                            text-[30px] leading-none"
+                          style={{
+                            background: good ? '#c5df8f' : '#a33a32',
+                            borderColor: good ? '#8cc63f' : '#e8887e',
+                          }}
                         >
-                          <span
-                            className="grid h-[38px] w-[38px] place-items-center rounded-full border-[3px]
-                              text-[19px] leading-none"
-                            style={{
-                              background: good ? '#c5df8f' : '#a33a32',
-                              borderColor: good ? '#8cc63f' : '#e8887e',
-                            }}
-                          >
-                            {badge?.emoji}
-                          </span>
-                          <span
-                            className="absolute -right-1 -top-1 grid h-[15px] w-[15px] place-items-center rounded-full
-                              bg-[#e7505a] text-white opacity-0 shadow transition group-hover:opacity-100"
-                          >
-                            <Icon name="close" size={9} strokeWidth={3.2} />
-                          </span>
-                        </button>
-                      </div>
+                          <span>{badge?.emoji}</span>
+                        </span>
+                        <span
+                          className="absolute -right-0.5 -top-0.5 grid h-[17px] w-[17px] place-items-center
+                            rounded-full bg-[#e7505a] text-white opacity-0 shadow transition group-hover:opacity-100"
+                        >
+                          <Icon name="close" size={10} strokeWidth={3.2} />
+                        </span>
+                      </button>
+                      <p className="text-center text-[12px] font-semibold leading-tight text-ink-800">
+                        {b.name}
+                      </p>
                       <textarea
                         value={textOf(b)}
                         onChange={(e) => { setText(b, e.target.value); setError(null) }}
-                        rows={3}
+                        rows={4}
                         placeholder={b.kind === 'Забележка' ? 'Опишете забележката…' : 'Опишете похвалата…'}
                         className={`w-full resize-y rounded-[2px] border bg-white px-2 py-1.5 text-[12.5px]
                           leading-relaxed text-ink-800 outline-none ${
