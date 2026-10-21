@@ -60,6 +60,8 @@ interface Ctx {
   /** групово уважаване — действието „Уважи" от лентата на раздел Отсъствия */
   excuseAbsences: (ids: string[], reason: Absence['reason'], note?: string, label?: string) => void
   addNote: (n: Omit<Note, 'id'>) => void
+  /** групово въвеждане — един отзив за всяка двойка ученик × значка */
+  addNotes: (items: Omit<Note, 'id'>[]) => void
   deleteNote: (id: string) => void
   addExam: (e: Omit<Exam, 'id'>) => void
   deleteExam: (id: string) => void
@@ -488,6 +490,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }),
 
       addNote: (n) => update((d) => { d.notes.unshift({ ...n, id: `nte_${Date.now()}` }) }),
+      addNotes: (items) =>
+        update((d) => {
+          items.forEach((n, i) =>
+            d.notes.unshift({
+              ...n,
+              id: `nte_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+            }),
+          )
+        }),
       deleteNote: (id) => update((d) => { d.notes = d.notes.filter((n) => n.id !== id) }),
       addExam: (e) => update((d) => { d.exams.unshift({ ...e, id: `exm_${Date.now()}` }) }),
       deleteExam: (id) => update((d) => { d.exams = d.exams.filter((e) => e.id !== id) }),

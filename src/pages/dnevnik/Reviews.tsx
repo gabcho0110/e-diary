@@ -1,43 +1,23 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../../store/AppContext'
-import { Field, Icon, Modal, Select, Textarea } from '../../components/ui'
+import { Icon, Modal } from '../../components/ui'
 import { DnTable, EmptyRow, FilterButton, Num, StudentCell, TB, Th, Toolbar } from './shared'
+import { ReviewWizard } from './ReviewWizard'
 
 /**
  * Раздел „Отзиви" — таблица с по един ред на ученик и две колони с бройки:
  * „Забележки" и „Похвали". Клик върху бройка отваря списъка с отзивите на
- * ученика, а „+Добави" минава през стъпките от референтния дневник:
- * предмет → ученик → значки (може и похвала, и забележка) → коментар.
+ * ученика, а „+Добави" отваря целия екран „Въвеждане на отзиви"
+ * (ученик → значка → коментар, по няколко наведнъж).
  */
 
-const PRAISE = [
-  'Активна работа в час',
-  'Отлично представяне',
-  'Помощ на съученик',
-  'Отличен проект',
-  'Участие в инициатива',
-  'Постижение в състезание',
-]
-const REMARK = [
-  'Разговор в час',
-  'Неподготвен урок',
-  'Забравени материали',
-  'Закъснение',
-  'Неспазване на правилата',
-]
-
 export function ReviewsTab({ classId }: { classId: string }) {
-  const { db, isStaff, user, studentsOf, addNote, deleteNote, subjectName } = useApp()
+  const { db, isStaff, studentsOf, deleteNote } = useApp()
   const [open, setOpen] = useState(false)
   const [detail, setDetail] = useState<{ studentId: string; kind: 'Похвала' | 'Забележка' } | null>(null)
   const [picked, setPicked] = useState<Record<string, boolean>>({})
-  const [form, setForm] = useState({
-    subjectId: '', studentId: '', praise: [] as string[], remark: [] as string[], comment: '',
-  })
 
   const students = studentsOf(classId)
-  const klass = db.classes.find((c) => c.id === classId)
-  const subjects = db.subjects.filter((s) => klass?.subjectIds.includes(s.id))
 
   const notes = useMemo(
     () => db.notes.filter((n) => n.classId === classId),
@@ -56,27 +36,6 @@ export function ReviewsTab({ classId }: { classId: string }) {
     setPicked({})
   }
 
-  const save = () => {
-    if (!form.studentId) return
-    const rows = [
-      ...form.praise.map((b) => ({ kind: 'Похвала' as const, badge: b })),
-      ...form.remark.map((b) => ({ kind: 'Забележка' as const, badge: b })),
-    ]
-    if (!rows.length) return
-    rows.forEach((r) => addNote({
-      studentId: form.studentId,
-      classId,
-      text: form.comment || r.badge,
-      kind: r.kind,
-      badge: r.badge,
-      teacherId: user!.id,
-      date: new Date().toISOString().slice(0, 10),
-      visibleToParent: true,
-    }))
-    setForm({ ...form, studentId: '', praise: [], remark: [], comment: '' })
-    setOpen(false)
-  }
-
   const detailList = detail
     ? notes.filter((n) => n.studentId === detail.studentId && n.kind === detail.kind)
     : []
@@ -86,9 +45,7 @@ export function ReviewsTab({ classId }: { classId: string }) {
       <Toolbar>
         {isStaff && (
           <>
-            <TB icon="plus" tone="teal" onClick={() => { setForm({ ...form, subjectId: subjects[0]?.id ?? '' }); setOpen(true) }}>
-              Добави
-            </TB>
+            <TB icon="plus" tone="teal" onClick={() => setOpen(true)}>Добави</TB>
             <TB icon="close" tone="red" disabled={!pickedIds.length} onClick={removePicked}>
               Изтрий{pickedIds.length ? ` (${pickedIds.length})` : ''}
             </TB>
@@ -144,67 +101,7 @@ export function ReviewsTab({ classId }: { classId: string }) {
         })}
       </DnTable>
 
-      {/* ── Нов отзив: предмет → ученик → значки → коментар ── */}
-      <Modal
-        open={open} onClose={() => setOpen(false)} wide title="Нов отзив"
-        footer={
-          <>
-            <button onClick={() => setOpen(false)} className="btn-ghost">Отказ</button>
-            <button className="btn-primary" onClick={save}>Запази</button>
-          </>
-        }
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="1. Предмет">
-            <Select value={form.subjectId} onChange={(e) => setForm({ ...form, subjectId: e.target.value })}>
-              <option value="">— изберете —</option>
-              {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select>
-          </Field>
-          <Field label="2. Ученик">
-            <Select value={form.studentId} onChange={(e) => setForm({ ...form, studentId: e.target.value })}>
-              <option value="">— изберете —</option>
-              {students.map((s) => <option key={s.id} value={s.id}>{s.number}. {s.firstName} {s.lastName}</option>)}
-            </Select>
-          </Field>
-        </div>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <BadgeGroup
-            title="3. Похвали"
-            tone="green"
-            items={PRAISE}
-            selected={form.praise}
-            onToggle={(b) => setForm({
-              ...form,
-              praise: form.praise.includes(b) ? form.praise.filter((x) => x !== b) : [...form.praise, b],
-            })}
-          />
-          <BadgeGroup
-            title="Забележки"
-            tone="red"
-            items={REMARK}
-            selected={form.remark}
-            onToggle={(b) => setForm({
-              ...form,
-              remark: form.remark.includes(b) ? form.remark.filter((x) => x !== b) : [...form.remark, b],
-            })}
-          />
-        </div>
-
-        <div className="mt-4">
-          <Field label="4. Коментар (по избор)">
-            <Textarea
-              value={form.comment}
-              onChange={(e) => setForm({ ...form, comment: e.target.value })}
-              placeholder="напр. Отлично представяне на проекта пред класа"
-            />
-          </Field>
-        </div>
-        <p className="mt-2 text-xs text-ink-400">
-          Може да изберете едновременно похвала и забележка — всяка значка се записва като отделен отзив.
-        </p>
-      </Modal>
+      {open && <ReviewWizard classId={classId} onClose={() => setOpen(false)} />}
 
       {/* ── Детайли на отзивите ── */}
       <Modal
@@ -238,43 +135,5 @@ export function ReviewsTab({ classId }: { classId: string }) {
         </div>
       </Modal>
     </>
-  )
-}
-
-function BadgeGroup({
-  title, items, selected, onToggle, tone,
-}: {
-  title: string
-  items: string[]
-  selected: string[]
-  onToggle: (b: string) => void
-  tone: 'green' | 'red'
-}) {
-  const on = tone === 'green'
-  return (
-    <div>
-      <p className="label">{title}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((b) => {
-          const active = selected.includes(b)
-          return (
-            <button
-              key={b}
-              type="button"
-              onClick={() => onToggle(b)}
-              className={`rounded-full border px-2.5 py-1 text-[12px] font-semibold transition ${
-                active
-                  ? on
-                    ? 'border-[#26c281] bg-[#e6f7ef] text-[#1a8a5b]'
-                    : 'border-[#e7505a] bg-[#fde8e8] text-[#b42318]'
-                  : 'border-ink-200 bg-white text-ink-600 hover:border-ink-300'
-              }`}
-            >
-              {b}
-            </button>
-          )
-        })}
-      </div>
-    </div>
   )
 }
