@@ -25,7 +25,7 @@ export interface LoadOptions {
 /** Всички колекции от модела (без `school`, което е единичен обект). */
 const COLLECTIONS = [
   'users', 'subjects', 'classes', 'students', 'grades', 'absences', 'notes',
-  'schedule', 'regimes', 'lessons', 'homework', 'exams', 'messages', 'tests', 'materials', 'tasks',
+  'schedule', 'regimes', 'lessons', 'lessonReports', 'homework', 'exams', 'messages', 'tests', 'materials', 'tasks',
   'events', 'meetings', 'activities', 'themePlans', 'fees', 'rooms',
   'competitions', 'portfolios', 'studentProfiles', 'attestations',
   'lessonAbsences', 'docs', 'virtualRooms', 'ifoDiaries', 'syncLogs', 'audit',

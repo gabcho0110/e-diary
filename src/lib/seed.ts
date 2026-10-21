@@ -6,7 +6,7 @@ import type {
   Sanction, ClassNote, SupportPlan, VhkLesson, ClassMeeting,
   CorrectionalExam, EquivalenceExam,
   AbsenceNote, GradeExemption, DeleteRequest, Norm, NormResult, TrainingPlan,
-  CombinedGroup, DayRegime, Lesson,
+  CombinedGroup, DayRegime, Lesson, LessonReport,
 } from './types'
 
 // ── Детерминиран генератор, за да е стабилен наборът от данни ────────────────
@@ -567,6 +567,7 @@ export function buildDB(): DB {
   ]
 
   const lessons: Lesson[] = []
+  const lessonReports: LessonReport[] = []
 
   // ── Домашни работи ───────────────────────────────────────────────────────
   const homework: Homework[] = []
@@ -1153,7 +1154,7 @@ export function buildDB(): DB {
   const trainingPlans: TrainingPlan[] = []
 
   return {
-    school, users, subjects, classes, students, grades, absences, notes, schedule, regimes, lessons,
+    school, users, subjects, classes, students, grades, absences, notes, schedule, regimes, lessons, lessonReports,
     homework, exams, messages, tests, materials, tasks, events, meetings, activities,
     themePlans, fees, rooms, competitions, portfolios, studentProfiles, attestations,
     lessonAbsences, docs: [...docs, ...delovodstvoDocs], virtualRooms, ifoDiaries,

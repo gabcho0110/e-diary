@@ -5,7 +5,7 @@ import type {
   Sanction, ClassNote, SupportPlan, VhkLesson, ClassMeeting,
   CorrectionalExam, EquivalenceExam, AbsenceNote, DeleteRequest, Norm,
   NormResult, TrainingPlan, ThemePlan, ScheduleEntry, AnnualResults,
-  NvoResult, DziResult, DayRegime, Lesson,
+  NvoResult, DziResult, DayRegime, Lesson, LessonReport,
 } from '../lib/types'
 import { storage, type StorageMode } from '../lib/storage'
 import { MODULES, type ModuleDef } from '../lib/modules'
@@ -29,6 +29,12 @@ function noteReason(n: AbsenceNote): { reason: Absence['reason']; label: string 
   if (n.kind === 'медицинска') return { reason: 'извинено', label: 'Извинено (медицинска бележка)' }
   return { reason: 'извинено', label: 'Извинено' }
 }
+
+/** Месеците за тематичното разпределение (редовете пазят име на месец). */
+const MONTHS_BG = [
+  'Септември', 'Октомври', 'Ноември', 'Декември', 'Януари', 'Февруари',
+  'Март', 'Април', 'Май', 'Юни', 'Юли', 'Август',
+]
 
 /** „2026-10-21 16:20" по местно време — `toISOString()` мести часа с 3 при GMT+3. */
 function stampNow(): string {
@@ -215,6 +221,13 @@ interface Ctx {
     classId: string, oldFrom: string, oldTo: string,
     nextFrom: string, nextTo: string, regimeId?: string,
   ) => void
+
+  // ── „Моят час" ───────────────────────────────────────────────────────────
+  /**
+   * Записва проведения час (взет/не, тема, домашна) и го отразява в
+   * „Дневник": тематичното разпределение и домашните работи.
+   */
+  saveLessonReport: (r: Omit<LessonReport, 'id' | 'updatedAt'>) => void
 
   updateExam: (id: string, patch: Partial<Exam>) => void
 
@@ -1081,6 +1094,85 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                   (l.date < nextFrom || l.date > nextTo)
                 ),
             )
+        }),
+
+      // ── „Моят час" ───────────────────────────────────────────────────────
+      saveLessonReport: (r) =>
+        update((d) => {
+          const stamp = stampNow()
+          const i = d.lessonReports.findIndex(
+            (x) => x.classId === r.classId && x.date === r.date && x.period === r.period,
+          )
+          const id = i >= 0
+            ? d.lessonReports[i].id
+            : `lrp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+          const row: LessonReport = { ...r, id, updatedAt: stamp }
+          if (i >= 0) d.lessonReports[i] = row
+          else d.lessonReports.push(row)
+
+          // темата влиза в тематичното разпределение („Дневник" → „Теми")
+          const topic = r.topic.trim()
+          if (topic) {
+            // MONTHS_BG започва от септември (учебна година), а getMonth() брои
+            // от януари — затова месецът се завърта с 8 позиции.
+            const month = MONTHS_BG[(new Date(`${r.date}T00:00:00`).getMonth() + 4) % 12]
+            const kind = (['НЗ', 'УПР', 'ТК', 'ДЗ'].includes(r.kind) ? r.kind : 'НЗ') as
+              'НЗ' | 'УПР' | 'ТК' | 'ДЗ'
+            let plan = d.themePlans.find(
+              (p) => p.classId === r.classId && p.subjectId === r.subjectId,
+            )
+            if (!plan) {
+              plan = {
+                id: `thp_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+                subjectId: r.subjectId,
+                classId: r.classId,
+                teacherId: r.teacherId,
+                year: d.school.year,
+                rows: [],
+              }
+              d.themePlans.push(plan)
+            }
+            const hit = plan.rows.find((x) => x.date === r.date)
+            if (hit) {
+              hit.topic = topic
+              hit.kind = kind
+              hit.taken = r.taken
+            } else {
+              plan.rows.push({
+                no: plan.rows.length + 1,
+                topic,
+                hours: 1,
+                month,
+                taken: r.taken,
+                date: r.date,
+                kind,
+              })
+            }
+          }
+
+          // домашната влиза в „Дневник" → „Домашни работи"
+          const text = r.homework.trim()
+          const hw = d.homework.find(
+            (x) => x.classId === r.classId && x.subjectId === r.subjectId && x.date === r.date,
+          )
+          if (hw) {
+            if (text) {
+              hw.text = text
+              hw.dueDate = r.homeworkDue || r.date
+            } else {
+              d.homework = d.homework.filter((x) => x.id !== hw.id)
+            }
+          } else if (text) {
+            d.homework.unshift({
+              id: `hwk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              classId: r.classId,
+              subjectId: r.subjectId,
+              teacherId: r.teacherId,
+              date: r.date,
+              dueDate: r.homeworkDue || r.date,
+              text,
+            })
+          }
         }),
 
       // ── ученици ──────────────────────────────────────────────────────────

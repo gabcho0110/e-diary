@@ -159,6 +159,13 @@ function DnevnikSubmenu({ onNavigate }: { onNavigate: () => void }) {
       )}
 
       <SubRow
+        icon="edit"
+        label="Моят час"
+        active={loc.pathname === '/moyat-chas'}
+        onClick={() => go('/moyat-chas')}
+      />
+
+      <SubRow
         icon="calendar"
         label="Моето разписание"
         active={loc.pathname === '/razpisanie'}
@@ -220,11 +227,13 @@ function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCollapsed
   const [q, setQ] = useState('')
   const loc = useLocation()
   const navigate = useNavigate()
-  const [openDnevnik, setOpenDnevnik] = useState(loc.pathname === '/dnevnik')
+  const [openDnevnik, setOpenDnevnik] = useState(
+    loc.pathname === '/dnevnik' || loc.pathname === '/razpisanie' || loc.pathname === '/moyat-chas',
+  )
   const [openAdmin, setOpenAdmin] = useState(loc.pathname.startsWith('/administracia'))
 
   useEffect(() => {
-    if (loc.pathname === '/dnevnik' || loc.pathname === '/razpisanie') setOpenDnevnik(true)
+    if (loc.pathname === '/dnevnik' || loc.pathname === '/razpisanie' || loc.pathname === '/moyat-chas') setOpenDnevnik(true)
     if (loc.pathname.startsWith('/administracia')) setOpenAdmin(true)
   }, [loc.pathname])
 
@@ -321,7 +330,7 @@ function Sidebar({ collapsed, setCollapsed }: { collapsed: boolean; setCollapsed
                   onClick={() => (collapsed ? navigate('/dnevnik') : setOpenDnevnik((v) => !v))}
                   aria-expanded={openDnevnik}
                   className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition ${
-                    loc.pathname === '/dnevnik' || loc.pathname === '/razpisanie'
+                    loc.pathname === '/dnevnik' || loc.pathname === '/razpisanie' || loc.pathname === '/moyat-chas'
                       ? 'bg-white/20 font-semibold text-white'
                       : 'text-white/85 hover:bg-white/10 hover:text-white'
                   }`}

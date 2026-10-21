@@ -150,6 +150,7 @@ export const ADMIN_ITEMS: AdminItem[] = ADMIN_MENU.flatMap((g) => g.items)
  */
 export const SUB_TITLES: Record<string, string> = {
   '/razpisanie': 'Моето разписание',
+  '/moyat-chas': 'Моят час',
 }
 
 /** Заглавие за горната лента — търси първо в подменюто, после в модулите. */

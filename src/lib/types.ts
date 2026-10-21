@@ -553,6 +553,31 @@ export interface Lesson {
   updatedAt?: string
 }
 
+/**
+ * Проведен час — това, което учителят въвежда от „Моят час".
+ *
+ * Пази се отделно от разписанието, защото разписанието казва какво е
+ * планирано, а този запис — какво реално се е случило: взет ли е часът,
+ * каква е темата, каква домашна е дадена и в какъв вид е проведен.
+ */
+export interface LessonReport {
+  id: string
+  classId: string
+  subjectId: string
+  teacherId: string
+  date: string
+  period: number
+  /** часът е проведен */
+  taken: boolean
+  studyKind: string
+  topic: string
+  /** НЗ / УПР / ТК / ДЗ — както в тематичното разпределение */
+  kind: string
+  homework: string
+  homeworkDue?: string
+  updatedAt?: string
+}
+
 export interface Homework {
   id: string
   classId: string
@@ -562,9 +587,7 @@ export interface Homework {
   dueDate: string
   text: string
   attachment?: string
-}
-
-export interface Exam {
+}export interface Exam {
   id: string
   classId: string
   subjectId: string
@@ -946,6 +969,8 @@ export interface DB {
   regimes: DayRegime[]
   /** занятията по дати — седмичното разписание в „Дневник" */
   lessons: Lesson[]
+  /** проведените часове — какво е въведено от „Моят час" */
+  lessonReports: LessonReport[]
   homework: Homework[]
   exams: Exam[]
   messages: Message[]
