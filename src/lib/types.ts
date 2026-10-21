@@ -467,6 +467,10 @@ export interface Note {
   badge?: string
   teacherId: string
   date: string
+  /** предметът, по който е поставена значката (в образеца се вижда в картата) */
+  subjectId?: string
+  /** кога е въведена — „2026-10-21 16:20" (местно време, не UTC) */
+  createdAt?: string
   visibleToParent: boolean
 }
 

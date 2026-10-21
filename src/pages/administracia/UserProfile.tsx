@@ -836,7 +836,9 @@ export default function UserProfile({
             {notes.slice(0, 200).map((n) => (
               <tr key={n.id} className="hover:bg-[#f6fafd]">
                 <td className="td"><ClassBadge name={klassName(n.classId)} /></td>
-                <td className="td text-[12.5px] text-ink-500">Общ отзив</td>
+                <td className="td text-[12.5px] text-ink-500">
+                  {n.subjectId ? subjectName(n.subjectId) : 'Общ отзив'}
+                </td>
                 <td className="td text-[12.5px] text-[#337ab7]">{studentName(n.studentId)}</td>
                 <td className="td">
                   <span

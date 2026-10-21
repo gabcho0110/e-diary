@@ -2,49 +2,27 @@ import { useMemo, useState } from 'react'
 import { useApp } from '../../store/AppContext'
 import { Icon } from '../../components/ui'
 import { AddPage } from './forms'
-import type { Student } from '../../lib/types'
+import { personShort } from '../../lib/classes'
+import { badgesOf, findBadge, type ReviewKind } from '../../lib/reviews'
+import type { Klass, Student } from '../../lib/types'
 
 /**
- * „Въвеждане на отзиви" — екранът по образеца на референтния дневник.
+ * „Въвеждане на отзиви" — целият екран по образеца на референтния дневник.
  *
- * Три стъпки в една страница, всяка в собствена колона с надпис:
- *   1. Избери ученик  — може няколко наведнъж („Избери всички")
- *   2. Избери значка  — раздели „Похвали" / „Забележки", пак няколко
- *   3. Въведи коментар — един текст, който се записва към всички
+ *   Избери предмет:  [ Английски език - Алекс Г. Тодоров ▾ ]
  *
- * Записва се по един отзив за всяка двойка ученик × значка.
+ *   1. Избери ученик | 2. Избери значка | 3. Въведи коментар
+ *
+ * Учениците и значките се избират по няколко наведнъж. В третата колона се
+ * вижда избраната значка и полето за описание; при забележка описанието е
+ * задължително. Записва се по един отзив за всяка двойка ученик × значка.
  */
 
-type Kind = 'Похвала' | 'Забележка'
+type PickedBadge = { name: string; kind: ReviewKind }
 
-type Badge = { name: string; icon: string }
+const keyOf = (b: PickedBadge) => `${b.kind}:${b.name}`
 
-/** Избрана значка помни и своя раздел, за да не се бъркат еднакви имена. */
-type PickedBadge = Badge & { kind: Kind }
-
-/** Значките от образеца — иконата е от собствения набор в `ui.tsx`. */
-const PRAISE: Badge[] = [
-  { name: 'Активно участие', icon: 'spark' },
-  { name: 'Отлично представяне', icon: 'trophy' },
-  { name: 'Изпълнена задача', icon: 'task' },
-  { name: 'Любознание', icon: 'search' },
-  { name: 'Старание', icon: 'book' },
-  { name: 'Прогрес', icon: 'chart' },
-  { name: 'Работа в екип', icon: 'meet' },
-  { name: 'Мислене', icon: 'cap' },
-  { name: 'Постигната цел', icon: 'star' },
-]
-
-const REMARK: Badge[] = [
-  { name: 'Разсейване в час', icon: 'bell' },
-  { name: 'Неподготвен урок', icon: 'ban' },
-  { name: 'Забравени материали', icon: 'archive' },
-  { name: 'Закъснение', icon: 'clock' },
-  { name: 'Неспазване на правилата', icon: 'warn' },
-  { name: 'Липса на домашно', icon: 'clipboard' },
-]
-
-/** Днес във вид `2026-10-21` — ръчно, защото `toISOString()` мести деня. */
+/** „2026-10-21" по местно време — `toISOString()` мести деня при GMT+3. */
 function todayIso(): string {
   const n = new Date()
   const p = (x: number) => String(x).padStart(2, '0')
@@ -56,17 +34,38 @@ function studentLabel(s: Student): string {
   return `${s.number}. ${s.firstName}${mid} ${s.lastName}${s.sen ? ' (СОП)' : ''}`
 }
 
-export function ReviewWizard({ classId, onClose }: { classId: string; onClose: () => void }) {
-  const { studentsOf, className, addNotes, user } = useApp()
+export function ReviewWizard({ classId, klass, onClose }: {
+  classId: string
+  klass?: Klass
+  onClose: () => void
+}) {
+  const { db, studentsOf, className, addNotes, user } = useApp()
+
+  const subjects = useMemo(
+    () => (klass ? db.subjects.filter((s) => klass.subjectIds.includes(s.id)) : []),
+    [db.subjects, klass],
+  )
+
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '')
   const [pickedStudents, setPickedStudents] = useState<Record<string, boolean>>({})
+  const [kind, setKind] = useState<ReviewKind>('Похвала')
   const [picked, setPicked] = useState<PickedBadge[]>([])
-  const [kind, setKind] = useState<Kind>('Похвала')
-  const [comment, setComment] = useState('')
+  const [active, setActive] = useState<PickedBadge | null>(null)
+  const [texts, setTexts] = useState<Record<string, string>>({})
+  const [error, setError] = useState<string | null>(null)
 
   const students = useMemo(() => studentsOf(classId), [studentsOf, classId])
   const studentIds = students.map((s) => s.id)
   const allOn = studentIds.length > 0 && studentIds.every((id) => pickedStudents[id])
   const selStudents = studentIds.filter((id) => pickedStudents[id])
+
+  /** „Английски език - Алекс Г. Тодоров" — учителят идва от плана на паралелката. */
+  const subjectLabel = (id: string) => {
+    const name = db.subjects.find((s) => s.id === id)?.name ?? '—'
+    const row = klass?.plan?.find((p) => p.subjectId === id)
+    const teacher = row ? db.users.find((u) => u.id === row.teacherId) : undefined
+    return teacher ? `${name} - ${personShort(teacher)}` : name
+  }
 
   const toggleStudent = (id: string) =>
     setPickedStudents((p) => ({ ...p, [id]: !p[id] }))
@@ -74,26 +73,48 @@ export function ReviewWizard({ classId, onClose }: { classId: string; onClose: (
   const toggleAll = () =>
     setPickedStudents(allOn ? {} : Object.fromEntries(studentIds.map((id) => [id, true])))
 
-  const toggleBadge = (b: Badge) =>
-    setPicked((list) =>
-      list.some((x) => x.name === b.name && x.kind === kind)
-        ? list.filter((x) => !(x.name === b.name && x.kind === kind))
-        : [...list, { ...b, kind }],
-    )
+  const isPicked = (b: PickedBadge) => picked.some((x) => x.name === b.name && x.kind === b.kind)
 
-  const isOn = (b: Badge) => picked.some((x) => x.name === b.name && x.kind === kind)
+  const toggleBadge = (b: PickedBadge) => {
+    setError(null)
+    if (isPicked(b)) {
+      setPicked((list) => list.filter((x) => !(x.name === b.name && x.kind === b.kind)))
+      setActive((a) => (a && a.name === b.name && a.kind === b.kind ? null : a))
+    } else {
+      setPicked((list) => [...list, b])
+      setActive(b)
+    }
+  }
+
+  const textOf = (b: PickedBadge) =>
+    texts[keyOf(b)] ?? findBadge(b.name, b.kind)?.text ?? ''
+
+  const setText = (b: PickedBadge, v: string) =>
+    setTexts((t) => ({ ...t, [keyOf(b)]: v }))
 
   const total = selStudents.length * picked.length
   const canSave = total > 0
 
   const save = () => {
-    if (!canSave || !user) return
+    if (!user) return
+    if (!canSave) {
+      setError('Изберете поне един ученик и поне една значка.')
+      return
+    }
+    const empty = picked.find((b) => b.kind === 'Забележка' && !textOf(b).trim())
+    if (empty) {
+      setActive(empty)
+      setError('Въведете описание към забележката.')
+      return
+    }
+
     const date = todayIso()
     const items = selStudents.flatMap((studentId) =>
       picked.map((b) => ({
         studentId,
         classId,
-        text: comment.trim() || b.name,
+        subjectId: subjectId || undefined,
+        text: textOf(b).trim(),
         kind: b.kind,
         badge: b.name,
         teacherId: user.id,
@@ -105,23 +126,38 @@ export function ReviewWizard({ classId, onClose }: { classId: string; onClose: (
     onClose()
   }
 
-  const list = kind === 'Похвала' ? PRAISE : REMARK
+  const list = badgesOf(kind)
+  const activeBadge = active ? findBadge(active.name, active.kind) : undefined
 
   return (
     <AddPage
       title={`Въвеждане на отзиви за ${className(classId)}`}
       onBack={onClose}
-      onSave={canSave ? save : undefined}
+      onSave={save}
       saveLabel="Запази"
-      banner={
-        canSave ? undefined : (
-          <p className="flex items-center gap-2 text-[12.5px] text-[#8a6d1f]">
-            <Icon name="info" size={15} className="shrink-0 text-[#c49f47]" />
-            Изберете поне един ученик и поне една значка, за да запазите.
-          </p>
-        )
-      }
     >
+      {error && (
+        <div className="mb-2 rounded-[2px] border border-[#f0b8b8] bg-[#fbe9e9] px-3 py-[7px] text-[12.5px] font-semibold text-[#a94442]">
+          {error}
+        </div>
+      )}
+
+      {/* предметът — над трите колони, както в образеца */}
+      <div className="mb-2 flex flex-wrap items-center justify-center gap-2">
+        <span className="text-[12.5px] font-bold text-[#333]">Избери предмет:</span>
+        <select
+          value={subjectId}
+          onChange={(e) => setSubjectId(e.target.value)}
+          className="h-[27px] w-full max-w-[430px] rounded-[2px] border border-[#ccc] bg-white px-2
+            text-[12.5px] text-[#333] outline-none focus:border-[#337ab7]"
+        >
+          <option value="">— общ отзив (без предмет) —</option>
+          {subjects.map((s) => (
+            <option key={s.id} value={s.id}>{subjectLabel(s.id)}</option>
+          ))}
+        </select>
+      </div>
+
       <div className="flex min-h-full flex-col gap-3 lg:flex-row lg:items-stretch">
         {/* ── 1. Избери ученик ─────────────────────────────────────────── */}
         <section className="flex min-w-0 flex-1 flex-col rounded-[3px] border border-[#c8d4dc] bg-white">
@@ -158,12 +194,7 @@ export function ReviewWizard({ classId, onClose }: { classId: string; onClose: (
                   className={`flex w-full flex-col items-center gap-1 rounded-[2px] px-1.5 py-3 text-center
                     transition ${on ? 'bg-[#45b6cf] text-white' : 'text-ink-800 hover:bg-[#f2f7fa]'}`}
                 >
-                  <Icon
-                    name="person"
-                    size={26}
-                    strokeWidth={1.7}
-                    className={on ? 'text-white' : 'text-[#2b3a44]'}
-                  />
+                  <span className="text-[24px] leading-none">🎓</span>
                   <span className="text-[12px] leading-tight">{studentLabel(s)}</span>
                 </button>
               )
@@ -172,9 +203,9 @@ export function ReviewWizard({ classId, onClose }: { classId: string; onClose: (
         </section>
 
         {/* ── 2. Избери значка ─────────────────────────────────────────── */}
-        <section className="flex min-w-0 flex-col rounded-[3px] border border-[#c8d4dc] bg-white lg:w-[46%]">
+        <section className="flex min-w-0 flex-col rounded-[3px] border border-[#c8d4dc] bg-white lg:w-[44%]">
           <header className="flex items-center gap-2 bg-[#3d9fd6] px-3 py-[7px] text-white">
-            <Icon name="badge" size={14} strokeWidth={2.4} />
+            <Icon name="search" size={14} strokeWidth={2.4} />
             <h3 className="text-[13px] font-bold">2. Избери значка</h3>
             {picked.length > 0 && (
               <span className="ml-auto rounded-full bg-white/25 px-2 py-[1px] text-[11px] font-bold">
@@ -184,7 +215,7 @@ export function ReviewWizard({ classId, onClose }: { classId: string; onClose: (
           </header>
 
           <div className="grid grid-cols-2 border-b border-[#d5e3ea]">
-            {(['Похвала', 'Забележка'] as Kind[]).map((k) => {
+            {(['Похвала', 'Забележка'] as ReviewKind[]).map((k) => {
               const on = kind === k
               return (
                 <button
@@ -193,7 +224,9 @@ export function ReviewWizard({ classId, onClose }: { classId: string; onClose: (
                   onClick={() => setKind(k)}
                   className={`px-3 py-[7px] text-[12.5px] font-bold transition ${
                     on
-                      ? 'border-b-[3px] border-[#8cc63f] bg-[#cde9a6] text-[#33620d]'
+                      ? k === 'Похвала'
+                        ? 'border-b-[3px] border-[#8cc63f] bg-[#cde9a6] text-[#33620d]'
+                        : 'border-b-[3px] border-[#e7505a] bg-[#f7c9c6] text-[#7a2a24]'
                       : 'border-b-[3px] border-transparent text-ink-700 hover:bg-[#f5f9fb]'
                   }`}
                 >
@@ -203,32 +236,29 @@ export function ReviewWizard({ classId, onClose }: { classId: string; onClose: (
             })}
           </div>
 
-          <div className="grid flex-1 grid-cols-3 content-start gap-y-3 p-3">
+          <div className="grid flex-1 grid-cols-3 content-start gap-y-4 p-3">
             {list.map((b) => {
-              const on = isOn(b)
+              const pb: PickedBadge = { name: b.name, kind }
+              const on = isPicked(pb)
               const good = kind === 'Похвала'
               return (
                 <button
                   key={b.name}
                   type="button"
-                  onClick={() => toggleBadge(b)}
+                  onClick={() => toggleBadge(pb)}
+                  title={b.text}
                   className="flex flex-col items-center gap-1.5"
                 >
                   <span className="relative">
                     <span
-                      className="grid h-[62px] w-[62px] place-items-center rounded-full border-[3px] transition"
+                      className="grid h-[56px] w-[56px] place-items-center rounded-full border-[4px] text-[30px] leading-none transition"
                       style={{
-                        background: good ? '#e4f2c8' : '#fbe2df',
-                        borderColor: on ? (good ? '#5f9420' : '#c0392b') : good ? '#8cc63f' : '#e7505a',
-                        boxShadow: on ? `0 0 0 3px ${good ? '#d7e9b0' : '#f6d3ce'}` : undefined,
+                        background: good ? '#c5df8f' : '#a33a32',
+                        borderColor: on ? (good ? '#5f9420' : '#7a2a24') : good ? '#8cc63f' : '#e8887e',
+                        boxShadow: on ? `0 0 0 3px ${good ? '#d7e9b0' : '#f3c9c4'}` : undefined,
                       }}
                     >
-                      <Icon
-                        name={b.icon}
-                        size={26}
-                        strokeWidth={1.8}
-                        className={good ? 'text-[#5f9420]' : 'text-[#c0392b]'}
-                      />
+                      <span>{b.emoji}</span>
                     </span>
                     {on && (
                       <span
@@ -258,37 +288,41 @@ export function ReviewWizard({ classId, onClose }: { classId: string; onClose: (
             <h3 className="text-[13px] font-bold">3. Въведи коментар</h3>
           </header>
 
-          <div className="flex flex-1 flex-col gap-2.5 p-3">
-            <p className="text-[11.5px] leading-relaxed text-ink-500">
-              {selStudents.length === 0 || picked.length === 0
-                ? 'Изберете ученици и значки — тук ще видите колко отзива ще се запишат.'
-                : `Ще се запишат ${total} ${total === 1 ? 'отзив' : 'отзива'} за ${selStudents.length} ${
-                    selStudents.length === 1 ? 'ученик' : 'ученици'
-                  }.`}
-            </p>
-
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="Ученикът има общ коментар към избраните значки (по избор)…"
-              className="min-h-[110px] flex-1 resize-y rounded-[3px] border border-ink-200 px-2.5 py-2
-                text-[12.5px] leading-relaxed text-ink-800 outline-none focus:border-[#3d9fd6]"
-            />
-
-            {picked.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {picked.map((b) => {
-                  const good = b.kind === 'Похвала'
-                  return (
-                    <span
-                      key={`${b.kind}:${b.name}`}
-                      className="rounded-full px-2 py-[2px] text-[11px] font-semibold text-white"
-                      style={{ background: good ? '#8cc63f' : '#e7505a' }}
-                    >
-                      {b.name}
-                    </span>
-                  )
-                })}
+          <div className="flex flex-1 flex-col p-3">
+            {!active || !activeBadge ? (
+              <div className="grid flex-1 place-items-center rounded-[2px] border border-dashed border-[#9fc3de] px-4 py-10 text-center">
+                <p className="text-[12.5px] leading-relaxed text-ink-400">
+                  Тук се визуализират избраните отзиви.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <span
+                  className="grid h-[56px] w-[56px] place-items-center rounded-full border-[4px] text-[30px] leading-none"
+                  style={{
+                    background: active.kind === 'Похвала' ? '#c5df8f' : '#a33a32',
+                    borderColor: active.kind === 'Похвала' ? '#8cc63f' : '#e8887e',
+                  }}
+                >
+                  <span>{activeBadge.emoji}</span>
+                </span>
+                <p className="text-center text-[12px] font-semibold text-ink-800">
+                  {activeBadge.name}
+                </p>
+                <textarea
+                  value={textOf(active)}
+                  onChange={(e) => { setText(active, e.target.value); setError(null) }}
+                  rows={4}
+                  className={`mt-1 w-full resize-y rounded-[2px] border px-2 py-1.5 text-[12.5px]
+                    leading-relaxed text-ink-800 outline-none ${
+                      error && !textOf(active).trim()
+                        ? 'border-[#e7505a]'
+                        : 'border-[#cfd8e0] focus:border-[#3d9fd6]'
+                    }`}
+                />
+                <p className="w-full text-[11px] leading-relaxed text-ink-400">
+                  Описанието се записва към всички избрани ученици.
+                </p>
               </div>
             )}
           </div>

@@ -30,6 +30,13 @@ function noteReason(n: AbsenceNote): { reason: Absence['reason']; label: string 
   return { reason: 'извинено', label: 'Извинено' }
 }
 
+/** „2026-10-21 16:20" по местно време — `toISOString()` мести часа с 3 при GMT+3. */
+function stampNow(): string {
+  const n = new Date()
+  const p = (x: number) => String(x).padStart(2, '0')
+  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}`
+}
+
 /**
  * Уважава всички отсъствия, които попадат в периода на бележка.
  * Връща броя уважени. Закъсненията не се пипат — те са отделна категория и
@@ -528,13 +535,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           )
         }),
 
-      addNote: (n) => update((d) => { d.notes.unshift({ ...n, id: `nte_${Date.now()}` }) }),
+      addNote: (n) => update((d) => {
+        d.notes.unshift({ ...n, id: `nte_${Date.now()}`, createdAt: n.createdAt ?? stampNow() })
+      }),
       addNotes: (items) =>
         update((d) => {
           items.forEach((n, i) =>
             d.notes.unshift({
               ...n,
               id: `nte_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+              createdAt: n.createdAt ?? stampNow(),
             }),
           )
         }),
